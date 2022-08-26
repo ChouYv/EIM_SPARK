@@ -20,6 +20,7 @@
         <spark.version>3.0.2</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
         <scala.version>2.12.10</scala.version>
+        <postgresql.version>42.3.6</postgresql.version>
     </properties>
 
 
@@ -49,6 +50,11 @@
                 <version>${spark.version}</version>
             </dependency>
 
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
 
         </dependencies>
     </dependencyManagement>
