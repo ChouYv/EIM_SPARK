@@ -93,8 +93,11 @@ object test {
         |       if_not_null
         |from PgField where file_id= """.stripMargin + pgFileId + " order by index;"
     println(sql2)
-    val baseDF: DataFrame = spark.sql(sql2)
+    val baseDF: DataFrame = spark.sql(sql2).orderBy("index")
     baseDF.show()
+    val pkAndBkListDF: DataFrame = baseDF.selectExpr("concat_ws (',', collect_list(if(primary_key='Y',lower(coalesce(if(field_alias='',null,field_alias),name)),null))) as pk_list",
+      "concat_ws (',', collect_list(if(business_key='Y',lower(coalesce(if(field_alias='',null,field_alias),name)),null))) as bk_list")
+    pkAndBkListDF.show()
 
     import spark.implicits._
     import org.apache.spark.sql.functions._
@@ -103,19 +106,41 @@ object test {
         "lower(coalesce(if(field_alias='',null,field_alias),name)) as field_name"
         , "lower(field_type) as field_type"
         , "regexp_replace(fields_comment_en||'||'||fields_comment_cn,'[.,`''\\/{}$]',' ') as field_comment")
+      .orderBy("index")
 
 //       ldg
     val ldgDDLPrd:String =s"CREATE EXTERNAL TABLE IF NOT EXISTS ldg.${ddlName} (\n"
-    var ldgDDLMid:String =""
+    val ldgDDLMid: String = midDF.map((line: Row) => "\t`" + line.getAs("field_name").toString + "` string comment '" + line.getAs("field_comment") + "'")
+      .collect().mkString(",\n")
     val ldgDDLSuf:String =s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
       s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
       s"LOCATION 'cosn://${cosPath}/${sourceSystem}_${ddlName}' \n" +
       s"TBLPROPERTIES ('skip.header.line.count'='1');"
-    midDF.map((line: Row) =>"`"+line.getAs("field_name").toString + "` string comment '" + line.getAs("field_comment")+"'")
-      .collect()
-      .foreach((f: String) =>{ ldgDDLMid = (if ("" == ldgDDLMid) "\t" else "") + ldgDDLMid + (if("" == ldgDDLMid)"" else ",\n\t") + f })
-    val ldgDDLSql=ldgDDLPrd+ldgDDLMid+ldgDDLSuf
+
+
+
+
+    val ldgDDLSql: String =ldgDDLPrd+ldgDDLMid+ldgDDLSuf
     println(ldgDDLSql)
+
+//    ldg-pk
+    val ldgPkDDLPrd:String =s"CREATE EXTERNAL TABLE IF NOT EXISTS ldg.${ddlName}_pk (\n"
+    val ldgPkDDLMid: String = pkAndBkListDF.selectExpr("coalesce(if(bk_list='',null,bk_list),pk_list) as pk").map(
+      (row: Row) => row.getAs("pk").toString.split(",").map("\t" + _ + " string").mkString(",\n")
+    ).first()
+    val ldgPkDDLSuf:String = s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
+      s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
+      s"LOCATION 'cosn://${cosPath}/${sourceSystem}_${ddlName}_pk' \n" +
+      s"TBLPROPERTIES ('skip.header.line.count'='1');"
+
+
+
+    val ldgPkDDLSql=ldgPkDDLPrd+ldgPkDDLMid+ldgPkDDLSuf
+    println(ldgPkDDLSql)
+
+
+
+
 
 
     spark.stop()
