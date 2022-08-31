@@ -2,7 +2,6 @@ package org.sanofi.generator.scripts
 
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
-
 object test {
   def main(args: Array[String]): Unit = {
 
