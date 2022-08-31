@@ -1,6 +1,7 @@
 package org.sanofi.loading
 
-import org.apache.commons.cli.{OptionBuilder, Options}
+
+import org.sanofi.utils.sparkUtils.getOrCreateSparkSession
 
 import java.text.SimpleDateFormat
 import scala.collection.mutable
@@ -9,9 +10,24 @@ import java.util.Date
 
 object loadApp {
   def main(args: Array[String]): Unit = {
+    //  获取环境变量 url 等和cos路径
+     val envArgMap:Map[String, String]
+    = Map(
+      "bdmpPgDatabases" -> sys.env("BDMP_PG_DATABASES"),
+      "bdmpPgUrl" -> sys.env("BDMP_PG_URL"),
+      "bdmpPgPort" -> sys.env("BDMP_PG_PORT"),
+      "bdmpPgUser" -> sys.env("BDMP_PG_USER"),
+      "bdmpPgPwd" -> sys.env("BDMP_PG_PWD"),
+      "cosPath" -> sys.env("BDMP_SOURCE_FILE_COS_PATH")
+    )
 
     val argsMap: mutable.Map[String, String] = argsParse(args)
-     argsMap.isEmpty
+
+    if (!argsMap.isEmpty) {
+      val spark = getOrCreateSparkSession("local[4]", "test")
+      val tables = new createTables()
+    }
+
 
   }
 
@@ -29,7 +45,7 @@ object loadApp {
     if (0 == args.length) {
       println(standardCmdLine)
       argsParseFlag = false
-    } else  if (!args.contains("--tables")) {
+    } else if (!args.contains("--tables")) {
       println(tablesArgRemind)
       argsParseFlag = false
     } else if (!args.contains("--jobdate")) {
@@ -48,6 +64,6 @@ object loadApp {
       if (map.get("flag") isEmpty) map += ("flag" -> ("0" * map("tableList").split(",").length).split("").mkString(","))
       if (map.get("jobdate") isEmpty) map += ("jobDate" -> defaultJobDate)
     }
-      map
+    map
   }
 }
