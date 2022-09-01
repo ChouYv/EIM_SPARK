@@ -11,21 +11,30 @@ import java.util.Date
 object loadApp {
   def main(args: Array[String]): Unit = {
     //  获取环境变量 url 等和cos路径
-     val envArgMap:Map[String, String]
+    val envArgMap: Map[String, String]
     = Map(
-      "bdmpPgDatabases" -> sys.env("BDMP_PG_DATABASES"),
-      "bdmpPgUrl" -> sys.env("BDMP_PG_URL"),
-      "bdmpPgPort" -> sys.env("BDMP_PG_PORT"),
-      "bdmpPgUser" -> sys.env("BDMP_PG_USER"),
-      "bdmpPgPwd" -> sys.env("BDMP_PG_PWD"),
-      "cosPath" -> sys.env("BDMP_SOURCE_FILE_COS_PATH")
+      "BDMP_PG_DATABASES" -> sys.env("BDMP_PG_DATABASES"),
+      "BDMP_PG_URL" -> sys.env("BDMP_PG_URL"),
+      "BDMP_PG_PORT" -> sys.env("BDMP_PG_PORT"),
+      "BDMP_PG_USER" -> sys.env("BDMP_PG_USER"),
+      "BDMP_PG_PWD" -> sys.env("BDMP_PG_PWD"),
+      "BDMP_SOURCE_FILE_COS_PATH" -> sys.env("BDMP_SOURCE_FILE_COS_PATH")
     )
-
+    println(envArgMap)
     val argsMap: mutable.Map[String, String] = argsParse(args)
 
     if (!argsMap.isEmpty) {
-      val spark = getOrCreateSparkSession("local[4]", "test")
-      val tables = new createTables()
+//      val spark = getOrCreateSparkSession("local[4]", "test")
+      val spark = getOrCreateSparkSession("yarn", "test")
+      val ddl = new createTables(spark, envArgMap, argsMap)
+      //      println(ddl.getLdgDDLSql("MD_CL_CONTENT"))
+      //      println(ddl.getLdgDDLSqlList(argsMap("tableList").split(",")))
+//      ddl.writeInpath(argsMap("tableList").split(","), "2022-09-01")
+
+      Array("TD_CL_VIDEO_ACTIVITY","TD_CL_USERANSWERDETAIL","TD_CL_USERANSWER","TD_CL_USERACTIVITY","TD_CL_SHARE_VIDEO_ACTIVITY","TD_CL_SEARCH_USERACTIVITY_AFFL","TD_CL_SEARCHACTIVITY","TD_CL_LIKE_VIDEO_ACTIVITY","TD_CL_LIKEACTIVITY","TD_CL_HIPPO_TRANSLATION_ACTIVITY","TD_CL_HIPPO_REQUESTORIGINALTEXT_ACTIVITY","TD_CL_HIPPO_PLAYSPEECH_ACTIVITY","TD_CL_HIPPO_FAVORITE_ACTIVITY","TD_CL_HIPPO_DOWNLOADPPT_ACTIVITY","TD_CL_HIPPO_DOWNLOADDOC_ACTIVITY","TD_CL_HCP_PUSHED","TD_CL_FAVORITEACTIVITY","TD_CL_FAQ_VIEW_ACTIVITY","TD_CL_FAQ_LIKE_ACTIVITY","TD_CL_DOWNLOADACTIVITY","TD_CL_CONTENT_PUSHED","TD_CL_COMMENT_VIDEO_ACTIVITY","TD_CL_COMMENTSACTIVITY","TD_CL_CAMPAIGN_ACTIVITY_VIEW_BEHAVIOR","TD_CL_ARTICLE","MD_CL_TAG_CUSTOM_DIMENSION","MD_CL_TAG_CUSTOM_BRAND","MD_CL_TAG","MD_CL_QUESTIONGROUPMAP","MD_CL_QUESTIONGROUP","MD_CL_QUESTION","MD_CL_MENU","MD_CL_MATERIAL_TAG_AFFL","MD_CL_MATERIAL_SIMILARITY_MAP","MD_CL_MATERIAL","MD_CL_MAIN_MATERIAL_REF_MATERIAL_MAP","MD_CL_FAQ","MD_CL_CONTENT_VIDEO_MAP","MD_CL_CONTENT_TAG_AFFL","MD_CL_CONTENT_PUSHED_TAG_AFFL","MD_CL_CONTENT_MATERIAL_AFFL","MD_CL_CONTENT","MD_CL_CAMPAIGN_ACTIVITY_LISTTEMPLATE_MAP","MD_CL_CAMPAIGN_ACTIVITY"
+      )
+      ddl.writeInpath(argsMap("tableList").split(","), "2022-09-01")
+      spark.stop()
     }
 
 
