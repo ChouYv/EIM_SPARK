@@ -8,7 +8,9 @@ object sparkUtils {
           .builder()
           .appName(appName)
           .master(master)
+          .enableHiveSupport()
           .getOrCreate()
+
         spark.sparkContext.setLogLevel("WARN")
         spark
     }

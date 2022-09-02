@@ -1,6 +1,7 @@
 package org.sanofi.loading
 
-import org.apache.spark.sql.{DataFrame, SparkSession, Row}
+import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
+
 import scala.collection.mutable
 import java.io._
 
@@ -8,6 +9,7 @@ import java.io._
 class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap: mutable.Map[String, String]) {
 
   val DDLCreateSqlMap = new mutable.HashMap[String, String]
+  val fileNameAndTableNameMap = new mutable.HashMap[String, mutable.Map[String, String]]
 
   val bdmpPgDatabases: String = envArgMap("BDMP_PG_DATABASES")
   val bdmpPgUrl: String = envArgMap("BDMP_PG_URL")
@@ -36,6 +38,25 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
   bdmpSqlMapDf.createOrReplaceTempView("PgSqlMap")
 
 
+  private var DQDF: DataFrame = spark.sql(
+    """
+      |       select
+      |       '' as file_name,
+      |       name,
+      |       field_alias,
+      |       field_type,
+      |       value_range,
+      |       index,
+      |       primary_key,
+      |       business_key,
+      |       fields_comment_en,
+      |       fields_comment_cn,
+      |       if_enum_field,
+      |       if_not_null
+      |     from PgField where 1=0
+      """.stripMargin)
+
+
   for (elem <- tableList) {
     getDDLSql(elem, spark)
   }
@@ -44,7 +65,8 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
   def getDDLSql(elem: String, spark: SparkSession): Unit = {
     val inputFileName = elem
     val sql1: String =
-      """select
+      """
+        |   select
         |    bi.id as bi_id,
         |    bi.source_system as source_system,
         |    bif.id as bif_id,
@@ -90,6 +112,7 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
         |       if_not_null
         |from PgField where file_id= """.stripMargin + pgFileId + " order by index;"
     val baseDF: DataFrame = spark.sql(sql2).orderBy("index")
+    DQDF= DQDF.unionAll(baseDF.selectExpr(s"'${inputFileName}' as file_name", "*"))
     val pkAndBkListDF: DataFrame = baseDF.selectExpr(
       "concat_ws (',', collect_list(if(primary_key='Y',lower(coalesce(if(field_alias='',null,field_alias),name)),null))) as pk_list",
       "concat_ws (',', collect_list(if(business_key='Y',lower(coalesce(if(field_alias='',null,field_alias),name)),null))) as bk_list")
@@ -111,7 +134,7 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
       .mkString(",\n")
     val ldgDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
       s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
-      s"LOCATION 'cosn://${cosPath}/${sourceSystem}_${ddlName}' \n" +
+      s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}' \n" +
       s"TBLPROPERTIES ('skip.header.line.count'='1');"
 
     val ldgDDLSql: String = ldgDDLPrd + ldgDDLMid + ldgDDLSuf
@@ -132,8 +155,9 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
         ).first()
     val ldgPkDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
       s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
-      s"LOCATION 'cosn://${cosPath}/${sourceSystem}_${ddlName}_pk' \n" +
+      s"LOCATION 'cosn://${cosPath}/${sourceSystem}${ddlName}_pk' \n" +
       s"TBLPROPERTIES ('skip.header.line.count'='1');"
+
 
     val ldgPkDDLSql = ldgPkDDLPrd + ldgPkDDLMid + ldgPkDDLSuf
     if ("Y" == ifPhysicalDeletion) DDLCreateSqlMap(s"${inputFileName}") = DDLCreateSqlMap(s"${inputFileName}") + "\n" + ldgPkDDLSql
@@ -153,6 +177,7 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
 
     val stgDDLSql = stgDDLPrd + stgDDLMid + stgDDLSuf
     DDLCreateSqlMap(s"${inputFileName}") = DDLCreateSqlMap(s"${inputFileName}") + "\n" + stgDDLSql
+
 
     //    stg_pk
     val stgPkDDLPrd: String = s"drop table if exists stg.${ddlName}_pk;\nCREATE TABLE IF NOT EXISTS stg.${ddlName}_pk (\n"
@@ -194,8 +219,8 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
     } else if ("Delta" == fullDelta & "full delete full load by key" != loadSolution) {
       partKey = "eim_dt"
     }
-    val odsPkDDLPrd: String = s"drop table if exists ods.${ddlName};\nCREATE TABLE IF NOT EXISTS ods.${ddlName} (\n"
-    val odsPkDDLMidOne: String = midDF.filter(
+    val odsDDLPrd: String = s"drop table if exists ods.${ddlName};\nCREATE TABLE IF NOT EXISTS ods.${ddlName} (\n"
+    val odsDDLMidOne: String = midDF.filter(
       i => {
         if (partKey == "loadKey" & loadKeyList.contains(i.getAs("field_name").toString)) false else true
       }
@@ -204,13 +229,13 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
         "\t`" + line.getAs("field_name").toString + "` " + (
           line.getAs("field_type").toString match {
             case "bigint" | "int8" | "int8range" | "int4range" | "int2vector" => "bigint"
-            case "_int2"|"int2" => "smallint"
-            case "_int4"|"int4" => "int"
-            case "time_stamp"|"timestamp"|"timestamptz"|"datetime"|"datetime2" => "timestamp"
-            case "float4"|"float8"=> "double"
-            case "money"|"numeric"=> "decimal(20,4)"
-            case "date"=> "date"
-            case "bool"=> "boolean"
+            case "_int2" | "int2" => "smallint"
+            case "_int4" | "int4" => "int"
+            case "time_stamp" | "timestamp" | "timestamptz" | "datetime" | "datetime2" => "timestamp"
+            case "float4" | "float8" => "double"
+            case "money" | "numeric" => "decimal(20,4)"
+            case "date" => "date"
+            case "bool" => "boolean"
             case _ => "string"
           }
           ) + " comment '" + line.getAs("field_comment") + "'"
@@ -218,13 +243,13 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
     ).collect()
       .mkString(",\n")
 
-    val odsPkDDLMidTwo: String = ",\n\t`etl_is_hard_del` int COMMENT '0,1'," +
+    val odsDDLMidTwo: String = ",\n\t`etl_is_hard_del` int COMMENT '0,1'," +
       "\n\t`etl_created_ts` timestamp COMMENT 'eim_创建时间'," +
       "\n\t`etl_modified_ts` timestamp COMMENT 'eim_修改时间'" + (
       if ("eim_dt" != partKey) ",\n\t`eim_dt` string" else ""
       )
 
-    val odsPkDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \n" +
+    val odsDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \n" +
       (
         partKey match {
           case "loadKey" => "PARTITIONED BY (" + loadKeyList.map(i => "`" + i + "` string").mkString(",") + ") \n"
@@ -237,9 +262,28 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
       s"LINES TERMINATED BY '\\n' \n" +
       s"stored as orc;"
 
-    val odsPkDDLSql = odsPkDDLPrd + odsPkDDLMidOne + odsPkDDLMidTwo + odsPkDDLSuf
-    DDLCreateSqlMap(s"${inputFileName}") = DDLCreateSqlMap(s"${inputFileName}") + "\n" + odsPkDDLSql
+    val odsDDLSql = odsDDLPrd + odsDDLMidOne + odsDDLMidTwo + odsDDLSuf
+    DDLCreateSqlMap(s"${inputFileName}") = DDLCreateSqlMap(s"${inputFileName}") + "\n" + odsDDLSql
 
+    fileNameAndTableNameMap += inputFileName ->
+      mutable.Map("ldg" -> s"ldg.${ddlName}",
+        "ldgPk" -> (if ("Y" == ifPhysicalDeletion) s"ldg.${ddlName}_pk" else ""),
+        "stg" -> s"stg.${ddlName}",
+        "stgPk" -> (if ("Y" == ifPhysicalDeletion) s"stg.${ddlName}_pk" else ""),
+        "rej" -> s"rej.ldg_${ddlName}_rej",
+        "rejPk" -> (if ("Y" == ifPhysicalDeletion) s"rej.ldg_${ddlName}_pk" else ""),
+        "ods" -> s"ods.${ddlName}"
+      )
+
+
+  }
+
+  def getDQDF():DataFrame ={
+    this.DQDF
+  }
+
+  def getFileNameAndTableNameMap(): mutable.HashMap[String, mutable.Map[String, String]] = {
+    this.fileNameAndTableNameMap
   }
 
 
@@ -278,7 +322,5 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
     for (elem <- fileNameList) {
       writeInpath(elem, jobDate)
     }
-
-
   }
 }
