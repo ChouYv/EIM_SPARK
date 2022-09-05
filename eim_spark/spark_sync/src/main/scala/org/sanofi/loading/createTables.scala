@@ -6,7 +6,7 @@ import scala.collection.mutable
 import java.io._
 
 
-class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap: mutable.Map[String, String]) {
+class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap: mutable.Map[String, String]) extends Serializable {
 
   val DDLCreateSqlMap = new mutable.HashMap[String, String]
   val fileNameAndTableNameMap = new mutable.HashMap[String, mutable.Map[String, String]]
@@ -112,7 +112,7 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
         |       if_not_null
         |from PgField where file_id= """.stripMargin + pgFileId + " order by index;"
     val baseDF: DataFrame = spark.sql(sql2).orderBy("index")
-    DQDF= DQDF.unionAll(baseDF.selectExpr(s"'${inputFileName}' as file_name", "*"))
+    DQDF= DQDF.unionAll(baseDF.selectExpr(s"lower('${inputFileName}') as file_name", "*"))
     val pkAndBkListDF: DataFrame = baseDF.selectExpr(
       "concat_ws (',', collect_list(if(primary_key='Y',lower(coalesce(if(field_alias='',null,field_alias),name)),null))) as pk_list",
       "concat_ws (',', collect_list(if(business_key='Y',lower(coalesce(if(field_alias='',null,field_alias),name)),null))) as bk_list")
@@ -308,7 +308,7 @@ class createTables(spark: SparkSession, envArgMap: Map[String, String], argsMap:
   }
 
   def writeInpath(fileName: String, jobDate: String): Unit = {
-    val writePath: String = s"/home/airflow/scripts/ddl/d${jobDate.replace("-", "")}/${fileName}.sql"
+    val writePath: String = s"/home/zhouyahui/scripts/ddl/d${jobDate.replace("-", "")}/${fileName}.sql"
     val file = new File(writePath)
     if (!file.getParentFile.exists) file.getParentFile.mkdirs
     if (!file.exists) file.createNewFile

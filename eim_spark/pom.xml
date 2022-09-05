@@ -21,6 +21,7 @@
         <scala.binary.version>2.12</scala.binary.version>
         <scala.version>2.12.10</scala.version>
         <postgresql.version>42.3.6</postgresql.version>
+        <mysql.version>5.1.27</mysql.version>
     </properties>
 
 
@@ -56,6 +57,11 @@
                 <version>${postgresql.version}</version>
             </dependency>
 
+            <dependency>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
+                <version>${mysql.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 </project>

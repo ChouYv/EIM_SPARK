@@ -1,6 +1,6 @@
 package org.sanofi.loading
 
-case class fileAndTableName(
+case class fileAndTableName (
                    fileName :String,
                    ldgTableName :String,
                    ldgPkTableName:Option[String],
