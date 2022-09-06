@@ -19,11 +19,11 @@ class checkDataQulity(spark: SparkSession,
 
 
   //  select * from cl_md_cl_content
+
+
   def dq(): Unit = {
     import spark.implicits._
     val keys: Iterable[String] = tablesMap.keys
-    //    var pkAndBkMap: mutable.Map[String, String] = mutable.Map("pk" -> "", "bk" -> "")
-    val pkAndBkMap: mutable.Map[String, Array[String]] = mutable.Map("pk" -> Array(), "bk" -> Array())
     for (fileName <- keys) {
       val DQRuleMap: Map[String, mutable.Map[String, String]] = df.where(s"file_name = lower('${fileName}')").map(
         r => {
@@ -32,7 +32,6 @@ class checkDataQulity(spark: SparkSession,
           var checkEnum: String = ""
           var enumRange: String = ""
           var checkNull: String = ""
-
 
           if (r.getAs("field_alias").equals(null) || 0 == r.getAs("field_alias").toString.length) {
             key = r.getAs("name").toString.toLowerCase()
@@ -60,13 +59,35 @@ class checkDataQulity(spark: SparkSession,
             case _ => "N"
           }
 
-          if ("Y" == r.getAs("primary_key")) pkAndBkMap("pk") :+ key
-          if ("Y" == r.getAs("business_key")) pkAndBkMap("bk") :+ key
 
           key -> mutable.Map("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
 
         }
       ).collect().toMap
+
+      val pkList: List[String] = df.where(s"file_name = lower('${fileName}') and primary_key='Y' ").orderBy("index").map(
+        r => {
+          var key = ""
+          if (r.getAs("field_alias").equals(null) || 0 == r.getAs("field_alias").toString.length) {
+            key = r.getAs("name").toString.toLowerCase()
+          } else {
+            key = r.getAs("field_alias").toString.toLowerCase()
+          }
+          key
+        }
+      ).collect().toList
+
+      val bkList: List[String] = df.where(s"file_name = lower('${fileName}') and business_key='Y' ").orderBy("index").map(
+        r => {
+          var key = ""
+          if (r.getAs("field_alias").equals(null) || 0 == r.getAs("field_alias").toString.length) {
+            key = r.getAs("name").toString.toLowerCase()
+          } else {
+            key = r.getAs("field_alias").toString.toLowerCase()
+          }
+          key
+        }
+      ).collect().toList
 
 
       val fieldArr: Array[String] = df.where(s"file_name = lower('${fileName}')")
@@ -102,7 +123,7 @@ class checkDataQulity(spark: SparkSession,
         .map(
           row => {
             var flagArr: Array[String] = Array()
-            println(row.schema.fieldNames.mkString(","))
+            //            println(row.schema.fieldNames.mkString(","))
             for (elem <- columns) {
               /*
                   * @desc   一层判断 ，后续判断只校验非空和null值
@@ -135,14 +156,20 @@ class checkDataQulity(spark: SparkSession,
                     }
                   case _ => ""
                 }
-
+                /*
+                    * @desc   枚举值校验   null值 目前不校验
+                    * @author   Yav
+                    * @date 9/5/22 10:00 PM
+                */
                 if ("Y" == DQRuleMap(elem)("checkEnum") &&
-                  checkEnum(row.getAs(elem).toString, DQRuleMap(elem)("enumRange"))
+                  !checkEnum(row.getAs(elem).toString, DQRuleMap(elem)("enumRange"))
                 ) {
-
+                  flagArr = flagArr :+ s"${elem}列未通过[枚举值检查] errValue->${row.getAs(elem).toString},range->${DQRuleMap(elem)("enumRange")}"
                 }
 
               }
+
+
             }
 
             val flagStr: String = if (!flagArr.isEmpty) flagArr.mkString("||") else ""
@@ -152,8 +179,34 @@ class checkDataQulity(spark: SparkSession,
             val newRow: Row = new GenericRowWithSchema(buffer.toArray, schema)
             newRow
           }
-        )(RowEncoder(schema)).show()
+        )(RowEncoder(schema)).show(false)
 
+
+      /*
+          * @desc   唯一性校验
+          * @author   Yav
+          * @date 9/5/22 10:05 PM
+      */
+      val jobPkList: List[String] = if (pkList.isEmpty) bkList else pkList
+
+      df1.filter(x => {
+        var target = 0
+        for (elem <- columns) {
+          if (x.getAs(elem) != elem) target = target + 1
+        }
+        if (target == 0) false else true
+      }).map(x=>{
+        var key = ""
+        val value = 1
+        if (0==jobPkList.length) {
+            (x.getAs(jobPkList(0)).toString,value)
+        } else {
+          for (i <- 0 until(jobPkList.length)){
+            key =key+x.get(i)
+          }
+           (key,value)
+        }
+      }).show()
 
     }
   }
@@ -211,6 +264,7 @@ class checkDataQulity(spark: SparkSession,
   }
 
   def checkEnum(value: String, range: String): Boolean = {
+
     val enumRange: Array[String] = range.split(",")
     enumRange.contains(value)
   }

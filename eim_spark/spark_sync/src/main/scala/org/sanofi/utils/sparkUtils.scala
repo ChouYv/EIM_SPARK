@@ -10,7 +10,7 @@ object sparkUtils extends Serializable {
           .appName(appName)
           .master(master)
           .enableHiveSupport()
-          .config(new SparkConf().setJars( Seq{"/home/zhouyahui/Projects/EIM_SPARK/eim_spark/spark_sync/target/spark_sync-1.0-SNAPSHOT.jar"}))
+//          .config(new SparkConf().setJars( Seq{"/home/zhouyahui/Projects/EIM_SPARK/eim_spark/spark_sync/target/spark_sync-1.0-SNAPSHOT.jar"}))
           .getOrCreate()
 
         spark.sparkContext.setLogLevel("WARN")
