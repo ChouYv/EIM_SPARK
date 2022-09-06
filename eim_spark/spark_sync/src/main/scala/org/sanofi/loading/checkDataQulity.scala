@@ -1,13 +1,10 @@
 package org.sanofi.loading
 
-import org.apache.derby.impl.sql.compile.TableName
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types.{StringType, StructType}
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-import org.apache.spark.storage.StorageLevel
+import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 
 import java.text.SimpleDateFormat
-import java.util
 import java.util.Date
 import scala.collection.mutable
 
@@ -89,15 +86,12 @@ class checkDataQulity(spark: SparkSession,
         }
       ).collect().toList
 
+      val jobPkList: List[String] = if (pkList.isEmpty) bkList else pkList
 
-      val fieldArr: Array[String] = df.where(s"file_name = lower('${fileName}')")
-        .selectExpr("lower(coalesce(if(field_alias='',null,field_alias),name)) as fi_name ")
-        .orderBy("index").map(r => r.toString()).collect()
 
-      println(tablesMap(s"${fileName}")("ldg"))
+
       val selectSql = s"select * from ${tablesMap(s"${fileName}")("ldg")} where eim_dt='${jobDate}'"
 
-      println(DQRuleMap)
       //      不确定能否纯MEMORY      先用 MEMORY+DISK （Map （String->Long）） 未试
       //      spark.sql(selectSql).persist(StorageLevel.MEMORY_ONLY)
       val df1: DataFrame = spark.sql(selectSql)
@@ -108,12 +102,37 @@ class checkDataQulity(spark: SparkSession,
           * @author   Yav
           * @date 9/5/22 10:04 AM
       */
+
       import org.apache.spark.sql.catalyst.encoders.RowEncoder
       val schema: StructType = df1.schema
         .add("flag", StringType)
       val columns: Array[String] = df1.columns.filter(_ != "eim_dt")
+      /*
+          * @desc
+          * @author   Yav
+          * @date 9/6/22 5:29 AM
+      */
+      val duplicateFieldList: List[String] = df1.filter(x => {
+        var target = 0
+        for (elem <- columns) {
+          if (x.getAs(elem) != elem) target = target + 1
+        }
+        if (target == 0) false else true
+      }).map(x => {
+        var key = ""
+        val value = 1
+        if (0 == jobPkList.length) {
+          (x.getAs(jobPkList(0)).toString, value)
+        } else {
+          for (i <- 0 until (jobPkList.length)) {
+            key = key + x.get(i)
+          }
+          (key, value)
+        }
+      }).toDF("key", "value").groupBy("key").count().where("count > 1").map(x=>x.get(0).toString).collect().toList
 
-      df1.filter(x => {
+
+      val checkDF: Dataset[Row] = df1.filter(x => {
         var target = 0
         for (elem <- columns) {
           if (x.getAs(elem) != elem) target = target + 1
@@ -168,9 +187,16 @@ class checkDataQulity(spark: SparkSession,
                 }
 
               }
-
-
             }
+            var key = ""
+            if (0 == jobPkList.length) {
+              key = row.getAs(jobPkList(0)).toString
+            } else {
+              for (i <- 0 until (jobPkList.length)) {
+                key = key + row.get(i)
+              }
+            }
+            if (duplicateFieldList.contains(key)) flagArr = flagArr :+ s"主键未通过[唯一性校验]"
 
             val flagStr: String = if (!flagArr.isEmpty) flagArr.mkString("||") else ""
 
@@ -179,34 +205,30 @@ class checkDataQulity(spark: SparkSession,
             val newRow: Row = new GenericRowWithSchema(buffer.toArray, schema)
             newRow
           }
-        )(RowEncoder(schema)).show(false)
+        )(RowEncoder(schema))
+
 
 
       /*
-          * @desc   唯一性校验
+          * @desc   执行插入 ldg->stg和rej
           * @author   Yav
-          * @date 9/5/22 10:05 PM
+          * @date 9/6/22 9:10 AM
       */
-      val jobPkList: List[String] = if (pkList.isEmpty) bkList else pkList
+      val stgAndRejArr: Array[String] = checkDF.columns.filter(!Array("eim_dt", "flag").contains(_))
+      checkDF.createOrReplaceTempView("ldgToStgTable")
+      val insertStgSql = s"insert overwrite table ${tablesMap(s"${fileName}")("stg")} partition(eim_dt='${jobDate}') " +
+        s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where flag ='' "
+      spark.sql(insertStgSql)
 
-      df1.filter(x => {
-        var target = 0
-        for (elem <- columns) {
-          if (x.getAs(elem) != elem) target = target + 1
-        }
-        if (target == 0) false else true
-      }).map(x=>{
-        var key = ""
-        val value = 1
-        if (0==jobPkList.length) {
-            (x.getAs(jobPkList(0)).toString,value)
-        } else {
-          for (i <- 0 until(jobPkList.length)){
-            key =key+x.get(i)
-          }
-           (key,value)
-        }
-      }).show()
+      val insertRejSql = s"insert overwrite table ${tablesMap(s"${fileName}")("rej")} partition(eim_dt='${jobDate}') " +
+        s"select ${stgAndRejArr.mkString(",")},flag from ldgToStgTable where flag <>'' "
+      spark.sql(insertRejSql)
+
+
+
+
+
+
 
     }
   }
