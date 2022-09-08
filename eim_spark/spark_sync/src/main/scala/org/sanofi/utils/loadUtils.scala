@@ -19,48 +19,32 @@ object loadUtils {
     var envParameter = ""
     var modelParameter = ""
     val parameterMap = new mutable.HashMap[String, String]
-
+    val defaultJobDate: String = new SimpleDateFormat("yyyy-MM-dd").format(new Date())
 
     if (0 == args.length) throw new Exception(STANDARD_CMD_LINE)
     if (!args.contains("--model")) throw new Exception(MISS_RUNNING_MODEL)
     if (!args.contains("--env")) throw new Exception(MISS_RUNNING_ENVIRONMENT)
-
 
     args.sliding(2, 2).toList.collect {
       case Array("--env", value: String) => envParameter = value
       case Array("--model", value: String) => modelParameter = value
     }
 
+    val spark = getOrCreateSparkSession("local[4]", s"auto_load_$defaultJobDate", "WARN")
+
     setEnvToMap(envParameter, parameterMap)
 
-    val spark = getOrCreateSparkSession("local[4]", "test", "WARN")
+    modelParameter match {
+      case "auto" => getAutoParameter(parameterMap, spark)
+      case "manual" => getManualParameter(parameterMap, args)
+    }
 
-    getAutoParameter(parameterMap,spark)
+    removeOtherKey(parameterMap)
 
+    if (parameterMap.get("jobDate").isEmpty) parameterMap += ("jobDate" -> defaultJobDate)
 
     parameterMap
 
-
-    //    val defaultJobDate: String = new SimpleDateFormat("yyyy-MM-dd").format(new Date())
-    //
-    //    args.sliding(2, 2).toList.collect {
-    //      case Array("--model", tableList: String) => map += ("model" -> tableList)
-    //      case Array("--env", tableList: String) => map += ("env" -> tableList)
-    //      case Array("--file", tableList: String) => map += ("fileList" -> tableList)
-    //      case Array("--jobdate", jobDate: String) => map += ("jobDate" -> jobDate)
-    //      case Array("--flag", flag: String) => map += ("flag" -> flag)
-    //    }
-    //
-    //
-    //    if (!args.contains("--tables")) throw new Exception(MISS_RUNNING_FILE_LIST)
-    //    if (!args.contains("--jobdate")) println(MISS_RUNNING_JOB_DATE)
-    //    if (!args.contains("--flag")) println(MISS_RUNNING_FLAG)
-    //
-    //
-    //    if (map.get("flag").isEmpty) map += ("flag" -> ("0" * map("tableList").split(",").length).split("").mkString(","))
-    //    if (map.get("jobDate").isEmpty) map += ("jobDate" -> defaultJobDate)
-    //
-    //    map
   }
   /*
       * @desc     切换不同环境的源数据库连接信息
@@ -72,17 +56,23 @@ object loadUtils {
     val p = new Properties()
     p.load(this.getClass().getClassLoader.getResourceAsStream("eim.properties"))
 
-    if (null != p.getProperty(s"${env}.source.url")) map += ("url" -> p.getProperty(s"${env}.source.url")) else throw new NoSuchElementException(s"未获取 ${env}.source.url 值，检查配置文件")
-    if (null != p.getProperty(s"${env}.source.port")) map += ("port" -> p.getProperty(s"${env}.source.port")) else throw new NoSuchElementException(s"未获取 ${env}.source.port 值，检查配置文件")
-    if (null != p.getProperty(s"${env}.source.user")) map += ("user" -> p.getProperty(s"${env}.source.user")) else throw new NoSuchElementException(s"未获取 ${env}.source.user 值，检查配置文件")
-    if (null != p.getProperty(s"${env}.source.pwd")) map += ("pwd" -> p.getProperty(s"${env}.source.pwd")) else throw new NoSuchElementException(s"未获取 ${env}.source.pwd 值，检查配置文件")
-    if (null != p.getProperty(s"${env}.source.database")) map += ("database" -> p.getProperty(s"${env}.source.database")) else throw new NoSuchElementException(s"未获取 ${env}.source.database 值，检查配置文件")
+    if (null != p.getProperty(s"$env.source.url")) map += ("url" -> p.getProperty(s"$env.source.url")) else throw new NoSuchElementException(s"未获取 $env.source.url 值，检查配置文件")
+    if (null != p.getProperty(s"$env.source.port")) map += ("port" -> p.getProperty(s"$env.source.port")) else throw new NoSuchElementException(s"未获取 $env.source.port 值，检查配置文件")
+    if (null != p.getProperty(s"$env.source.user")) map += ("user" -> p.getProperty(s"$env.source.user")) else throw new NoSuchElementException(s"未获取 $env.source.user 值，检查配置文件")
+    if (null != p.getProperty(s"$env.source.pwd")) map += ("pwd" -> p.getProperty(s"$env.source.pwd")) else throw new NoSuchElementException(s"未获取 $env.source.pwd 值，检查配置文件")
+    if (null != p.getProperty(s"$env.source.database")) map += ("database" -> p.getProperty(s"$env.source.database")) else throw new NoSuchElementException(s"未获取 $env.source.database 值，检查配置文件")
+    if (null != p.getProperty(s"$env.cos.path")) map += ("path" -> p.getProperty(s"$env.cos.path")) else throw new NoSuchElementException(s"未获取 $env.cos.path 值，检查配置文件")
   }
 
 
+  /*
+      * @desc   通过配置的源表获取 同步文件list等信息
+      * @author   Yav
+      * @date 9/8/22 4:48 AM
+  */
   def getAutoParameter(map: mutable.HashMap[String, String], spark: SparkSession): Unit = {
-    val fileList = new ListBuffer[String]
-    val flagList = new ListBuffer[String]
+    var fileList = new ListBuffer[String]
+    var flagList = new ListBuffer[String]
     val tuples: Array[(String, String)] = spark.read.format("jdbc")
       .option("url", "jdbc:postgresql://" + map("url") + ":" + map("port") + "/" + map("database"))
       .option("user", map("user"))
@@ -94,20 +84,33 @@ object loadUtils {
       .collect()
       .map(x => x.getAs("load_file_name").toString -> x.getAs("drop_table_flag").toString)
 
-    tuples.foreach(x=>{
-      fileList:+x._1
-      flagList:+x._2
+    tuples.foreach(x => {
+      fileList = fileList :+ x._1
+      flagList = flagList :+ x._2
     })
-
     map.remove("url")
     map.remove("user")
-    map.remove("password")
+    map.remove("pwd")
     map.remove("dbtable")
     map.remove("port")
     map.remove("database")
-    map.put("fileList",fileList.mkString(","))
-    map.put("flagList",flagList.mkString(","))
+    map.put("fileList", fileList.mkString(","))
+    map.put("flagList", flagList.mkString(","))
+  }
 
+  /*
+      * @desc   通过传入的args获取
+      * @author   Yav
+      * @date 9/8/22 4:49 AM
+  */
+  def getManualParameter(map: mutable.HashMap[String, String], args: Array[String]): Unit = {
+
+    args.sliding(2, 2).toList.collect {
+      case Array("--file", tableList: String) => map += ("fileList" -> tableList)
+      case Array("--jobdate", jobDate: String) => map += ("jobDate" -> jobDate)
+      case Array("--flag", flag: String) => map += ("flagList" -> flag)
+    }
+    if (map.get("flagList").isEmpty) map += ("flagList" -> ("0" * map("fileList").split(",").length).split("").map(_.replace("0","true")).mkString(","))
   }
 
   def main(args: Array[String]): Unit = {
@@ -123,5 +126,12 @@ object loadUtils {
       .load()
   }
 
-
+  def removeOtherKey(map: mutable.HashMap[String, String]):Unit = {
+    map.remove("url")
+    map.remove("user")
+    map.remove("pwd")
+    map.remove("dbtable")
+    map.remove("port")
+    map.remove("database")
+  }
 }
