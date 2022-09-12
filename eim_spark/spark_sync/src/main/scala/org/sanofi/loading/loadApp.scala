@@ -39,12 +39,18 @@ object loadApp {
       getDDLSql(fileName, spark, elem._2("dropCreateTableFlag").toBoolean, elem._2("generateTableDDLFlag").toBoolean)
 
 
+/*
+    * @desc onlyCreateTable 默认false  控制是否初次运行
+    * @author   Yav
+    * @date 9/12/22 11:14 PM
+*/
+    if(!onlyCreateTable) {
+
       /*
           * @desc   ldg->stg和rej  进行DQRULE
           * @author   Yav
           * @date 9/11/22 3:18 PM
       */
-
       dq()
       if ("Y" == ifPhysicalDeletion) {
         dqPk()
@@ -73,15 +79,13 @@ object loadApp {
       }
 
 
-
-
       /*
           * @desc   loadToOds
           * @author   Yav
           * @date 9/12/22 10:59 PM
       */
-      val odsColumns: String =spark.sql(s"select * from $odsTableName limit 1").dtypes.map(x=>{
-        "cast("+x._1+" as "+x._2.replace("Type","")+") as "+x._1
+      val odsColumns: String = spark.sql(s"select * from $odsTableName limit 1").dtypes.map(x => {
+        "cast(" + x._1 + " as " + x._2.replace("Type", "") + ") as " + x._1
       }).mkString(",")
 
       partKey match {
@@ -89,6 +93,11 @@ object loadApp {
         case "eim_dt" => spark.sql(s"insert overwrite table ${odsTableName} partition(eim_dt) select $odsColumns from loadToOds ")
         case _ => ""
       }
+    }
+
+
+
+
 
     }
 

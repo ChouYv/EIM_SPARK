@@ -15,7 +15,8 @@ object loadUtils {
   var jobDate = ""
   var envParameter = ""
   val jobMap: mutable.HashMap[String, mutable.HashMap[String, String]] = mutable.HashMap()
-
+//  快捷建表- 初次运行
+  var onlyCreateTable:Boolean = false
   def parseArgs(args: Array[String]): mutable.HashMap[String, mutable.HashMap[String, String]] = {
 
     var modelParameter = ""
@@ -29,6 +30,7 @@ object loadUtils {
       case Array("--env", value: String) => envParameter = value
       case Array("--model", value: String) => modelParameter = value
       case Array("--jobdate", value: String) => jobDate = value
+      case Array("--first", value: String) => onlyCreateTable = value.toBoolean
     }
 
     if ("" == jobDate) jobDate = getDateyyyyMMdd
