@@ -12,6 +12,20 @@ object initialTable {
   var spark: SparkSession = _
   var cosPath: String = _
 
+  var fieldDf: DataFrame = _
+
+  var ldgTableName: String = _
+  var stgTableName: String = _
+  var rejTableName: String = _
+  var odsTableName: String = _
+  var ldgPkTableName: String = _
+  var stgPkTableName: String = _
+  var rejPkTableName: String = _
+  var ifPhysicalDeletion:String= _
+  var pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
+  var loadKey:String =_
+  var partKey: String = _
+
   def initialPgTable(inputSpark: SparkSession, env: String) = {
     spark = inputSpark
     /*
@@ -58,8 +72,8 @@ object initialTable {
 
 
   def getDDLSql(inputFileName: String, spark: SparkSession, createFlag: Boolean, writeSQL: Boolean) = {
-
-    val pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
+        pkList.clear()
+//    val pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
     val sql1: String =
       """
         |   select
@@ -90,8 +104,8 @@ object initialTable {
     val tabCommentCn = df1Row.getAs("tab_comment_cn").toString
     val loadSolution = df1Row.getAs("load_solution").toString
     val fullDelta = df1Row.getAs("full_delta").toString
-    val ifPhysicalDeletion = df1Row.getAs("if_physical_deletion").toString
-    val loadKey = df1Row.getAs("load_key").toString
+     ifPhysicalDeletion = df1Row.getAs("if_physical_deletion").toString
+     loadKey = df1Row.getAs("load_key").toString
     val fileType = df1Row.getAs("file_type").toString
     val ddlName = df1Row.getAs("ddl_name").toString
 
@@ -112,7 +126,7 @@ object initialTable {
         |       if_not_null
         |from PgField where file_id= """.stripMargin + pgFileId + ";"
     val df2: DataFrame = spark.sql(sql2).orderBy("index")
-
+    fieldDf = df2.selectExpr("lower(coalesce(if(field_alias = '', null, field_alias))) as p_name", "*").orderBy("index")
     import spark.implicits._
     /*
       * @desc   获取主键的pkList
@@ -162,8 +176,8 @@ object initialTable {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string); \n"
       }
     }
-    val ldgDDLSql: String = ldgDDLPrd + ldgDDLMid + ldgDDLSuf
-
+    val ldgDDLSql = ldgDDLPrd + ldgDDLMid + ldgDDLSuf
+    ldgTableName = s"ldg.$ddlName"
 
     /*   
         * @desc   ldg-pk
@@ -184,7 +198,7 @@ object initialTable {
     }
     val ldgPkDDLSql = ldgPkDDLPrd + ldgPkDDLMid + ldgPkDDLSuf
     if ("Y" == ifPhysicalDeletion) println("不应该打印哈")
-
+    ldgPkTableName = s"ldg.${ddlName}_pk"
 
 
     /*
@@ -205,7 +219,7 @@ object initialTable {
       s"stored as orc;"
 
     val stgDDLSql = stgDDLPrd + stgDDLMid + stgDDLSuf
-
+    stgTableName = s"stg.$ddlName"
     /*
         * @desc    stg-pk
         * @author   Yav
@@ -217,8 +231,7 @@ object initialTable {
     val stgPkDDLSuf: String = stgDDLSuf
 
     val stgPkDDLSql = stgPkDDLPrd + stgPkDDLMid + stgPkDDLSuf
-    if ("Y" == ifPhysicalDeletion) println("不应该打印")
-
+    stgPkTableName = s"stg.${ddlName}_pk"
     /*
         * @desc   stg_rej
         * @author   Yav
@@ -233,7 +246,7 @@ object initialTable {
       s"stored as orc;"
 
     val rejDDLSql = rejDDLPrd + rejDDLMid + rejDDLSuf
-
+    rejTableName = s"rej.ldg_${ddlName}_rej"
     /*
         * @desc   rej_pk
         * @author   Yav
@@ -244,8 +257,7 @@ object initialTable {
     val rejPkDDLSuf: String = stgDDLSuf
 
     val rejPkDDLSql = rejPkDDLPrd + rejPkDDLMid + rejPkDDLSuf
-    if ("Y" == ifPhysicalDeletion) println("不该打印")
-
+    rejPkTableName=s"rej.ldg_${ddlName}_pk"
 
     /*
         * @desc   ods
@@ -253,7 +265,7 @@ object initialTable {
         * @date 9/11/22 9:57 PM
     */
 
-    var partKey: String = ""
+
     if ("full delete full load by key" == loadSolution) {
       partKey = "loadKey"
     } else if ("Full" == fullDelta & "full delete full load by key" != loadSolution) {
@@ -305,7 +317,7 @@ object initialTable {
       s"stored as orc;"
 
     val odsDDLSql = odsDDLPrd + odsDDLMidOne + odsDDLMidTwo + odsDDLSuf
-
+    odsTableName = s"ods.$ddlName"
 
     /*
         * @desc   createFlag:Boolean,writeSQL:Boolean  判断是否执行  是否落盘
@@ -316,8 +328,8 @@ object initialTable {
     val executionSql: String = {
       if ("Y" == ifPhysicalDeletion) {
         ldgDDLSql + "\n" + stgDDLSql + "\n" +
-        rejDDLSql + "\n" + odsDDLSql + "\n" +
-        ldgPkDDLSql + "\n" + stgPkDDLSql + "\n" +
+          rejDDLSql + "\n" + odsDDLSql + "\n" +
+          ldgPkDDLSql + "\n" + stgPkDDLSql + "\n" +
           rejPkDDLSql
       } else {
         ldgDDLSql + "\n" + stgDDLSql + "\n" +
@@ -326,16 +338,16 @@ object initialTable {
     }
 
     if (createFlag) doHiveSql(executionSql)
-    if (writeSQL)  writeInpath(inputFileName, executionSql)
+    if (writeSQL) writeInpath(inputFileName, executionSql)
 
   }
 
 
-  def doHiveSql(executionSql:String) ={
+  def doHiveSql(executionSql: String) = {
     val sql: Seq[String] = Seq("hive", "-e", executionSql)
     val builder: ProcessBuilder = Process(sql)
     val exitCode: Int = builder.!
-//    println(exitCode)
+    //    println(exitCode)
   }
 
   def writeInpath(fileName: String, downSql: String): Unit = {
@@ -348,6 +360,11 @@ object initialTable {
     writer.write(downSql)
     writer.close()
 
+  }
+
+
+  def getInitialSparkSession(): SparkSession = {
+    this.spark
   }
 
 

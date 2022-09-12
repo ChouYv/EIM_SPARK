@@ -1,9 +1,10 @@
 package org.sanofi.loading
 
+import org.apache.spark.sql.DataFrame
 import org.sanofi.utils.sparkUtils.getOrCreateSparkSession
-
 import org.sanofi.utils.loadUtils._
 import org.sanofi.loading.initialTable._
+import org.sanofi.loading.dataCheckAndLoad.{dq, dqPk, stgCols}
 
 object loadApp {
   def main(args: Array[String]): Unit = {
@@ -35,9 +36,8 @@ object loadApp {
           * @author   Yav
           * @date 9/11/22 3:17 PM
       */
-      if (elem._2("dropCreateTableFlag").toBoolean || elem._2("generateTableDDLFlag").toBoolean) {
-        getDDLSql(fileName, spark, elem._2("dropCreateTableFlag").toBoolean, elem._2("generateTableDDLFlag").toBoolean)
-      }
+      getDDLSql(fileName, spark, elem._2("dropCreateTableFlag").toBoolean, elem._2("generateTableDDLFlag").toBoolean)
+
 
       /*
           * @desc   ldg->stg和rej  进行DQRULE
@@ -45,12 +45,51 @@ object loadApp {
           * @date 9/11/22 3:18 PM
       */
 
+      dq()
+      if ("Y" == ifPhysicalDeletion) {
+        dqPk()
+      }
+
 
       /*
           * @desc   stg->ods
           * @author   Yav
           * @date 9/11/22 3:18 PM
       */
+      loadKey
+      if ("Y" == ifPhysicalDeletion) {
+        val joinCondition: String = pkList.map(x => {
+          s"(s.$x = sp.$x)"
+        }).mkString(" and  ")
+        val concatCols = pkList.map("sp." + _).mkString(",")
+        val joinSql = s"select s.*,if(concat($concatCols) is null,0,1) as etl_is_hard_del, date_format(current_timestamp(),'yyyy-MM-dd HH:mm:ss') as etl_created_ts, date_format(current_timestamp(),'yyyy-MM-dd HH:mm:ss') as etl_modified_ts " +
+          s"from (select * from $stgTableName where eim_dt='$jobDate') s left join (select * from $stgPkTableName where eim_dt='$jobDate') sp on $joinCondition "
+        val toOdsDf: DataFrame = spark.sql(joinSql)
+        toOdsDf.createOrReplaceTempView("loadToOds")
+      } else {
+
+        spark.sql(s"select *,0 as etl_is_hard_del, date_format(current_timestamp(),'yyyy-MM-dd HH:mm:ss') as etl_created_ts, date_format(current_timestamp(),'yyyy-MM-dd HH:mm:ss') as etl_modified_ts from $stgTableName where eim_dt='$jobDate'")
+          .createOrReplaceTempView("loadToOds")
+      }
+
+
+
+
+      /*
+          * @desc   loadToOds
+          * @author   Yav
+          * @date 9/12/22 10:59 PM
+      */
+      val odsColumns: String =spark.sql(s"select * from $odsTableName limit 1").dtypes.map(x=>{
+        "cast("+x._1+" as "+x._2.replace("Type","")+") as "+x._1
+      }).mkString(",")
+
+      partKey match {
+        case "loadKey" => ""
+        case "eim_dt" => spark.sql(s"insert overwrite table ${odsTableName} partition(eim_dt) select $odsColumns from loadToOds ")
+        case _ => ""
+      }
+
     }
 
 

@@ -3,13 +3,12 @@ package org.sanofi.utils
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 import java.util.Properties
-import java.text.SimpleDateFormat
-import java.util.Date
+
 import org.sanofi.model.Constants.cmdMessage._
 import org.sanofi.utils.sparkUtils._
 
+import java.time.LocalDate
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 
 
 object loadUtils {
@@ -49,7 +48,7 @@ object loadUtils {
   }
 
   def getDateyyyyMMdd(): String = {
-    new SimpleDateFormat("yyyy-MM-dd").format(new Date())
+    LocalDate.now().minusDays(1).toString
   }
 
   /*

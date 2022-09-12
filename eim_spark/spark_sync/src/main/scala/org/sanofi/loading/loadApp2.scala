@@ -37,6 +37,8 @@ object loadApp2 extends Serializable {
 //      ddl.writeInpath(strings, "2022-09-04")
       val tablesMap: mutable.HashMap[String, mutable.Map[String, String]] = ddl.getFileNameAndTableNameMap
 
+
+
       val f: DataFrame = ddl.getDQDF
       spark.sql("show databases;").show()
 
