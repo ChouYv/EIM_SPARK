@@ -446,7 +446,7 @@ object dataCheckAndLoad extends Serializable {
     }
 
     if (!flag) {
-      val format2 = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss")
+      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
       try {
         val date2: Date = format2.parse(str)
         flag = (str.equals(format2.format(date2)))
@@ -476,9 +476,17 @@ object dataCheckAndLoad extends Serializable {
 
 
   def updateTimestamp(str: String): String = {
-    var str1: String = str.replaceAll("/", "-")
-    if (str.length=="yyyy-MM-dd".length)  str1=str1+" 00:00:00"
-    str1
+    var newStr = ""
+    if(str.contains("/")){
+      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
+      val format3 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+
+      val date2: Date = format2.parse(str)
+      newStr = format3.format(date2)
+    }
+
+    if (str.length=="yyyy-MM-dd".length)  newStr=str+" 00:00:00"
+    newStr
   }
 
 
