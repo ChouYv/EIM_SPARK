@@ -1,7 +1,7 @@
 package org.sanofi.loading
 
 import org.apache.spark.sql.DataFrame
-import org.sanofi.utils.sparkUtils.getOrCreateSparkSession
+import org.sanofi.utils.sparkUtils.{closeSparkSession, getOrCreateSparkSession}
 import org.sanofi.utils.loadUtils._
 import org.sanofi.loading.initialTable._
 import org.sanofi.loading.dataCheckAndLoad.{dq, dqPk, stgCols}
@@ -23,7 +23,7 @@ object loadApp {
     //    println(jobDate + "\n")
     println(jobMap + "\n")
     //    println(envParameter + "\n")
-    val spark = getOrCreateSparkSession("local[4]", s"auto_load_$jobDate", "WARN")
+    val spark = getOrCreateSparkSession("yarn", s"auto_load_$jobDate", "WARN")
 
 
     initialPgTable(spark, envParameter)
@@ -97,9 +97,8 @@ object loadApp {
 
 
 
-
-
     }
+    closeSparkSession(spark)
 
 
   }
