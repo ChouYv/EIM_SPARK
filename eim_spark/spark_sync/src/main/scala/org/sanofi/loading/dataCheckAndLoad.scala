@@ -476,7 +476,7 @@ object dataCheckAndLoad extends Serializable {
 
 
   def updateTimestamp(str: String): String = {
-    var newStr = ""
+    var newStr = str
     if(str.contains("/")){
       val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
       val format3 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
