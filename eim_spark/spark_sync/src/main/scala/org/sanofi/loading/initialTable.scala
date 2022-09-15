@@ -98,6 +98,7 @@ object initialTable {
     }
 
     val df1Row: Row = df1.first()
+
     val pgInterfaceId = df1Row.getAs("bi_id").toString
     val sourceSystem = df1Row.getAs("source_system").toString
     val pgFileId = df1Row.getAs("bif_id").toString
@@ -126,7 +127,7 @@ object initialTable {
         |       if_not_null
         |from PgField where file_id= """.stripMargin + pgFileId + ";"
     val df2: DataFrame = spark.sql(sql2).orderBy("index")
-    fieldDf = df2.selectExpr("lower(coalesce(if(field_alias = '', null, field_alias))) as p_name", "*").orderBy("index")
+    fieldDf = df2.selectExpr("lower(coalesce(if(field_alias = '' , null, field_alias),name)) as p_name", "*").orderBy("index")
     import spark.implicits._
     /*
       * @desc   获取主键的pkList
@@ -137,12 +138,13 @@ object initialTable {
       .map(_ (0).toString).collect().toList
 
     if (primaryKeyList.contains("Y")) {
-      pkList ++= spark.sql(sql2).selectExpr("lower(coalesce(if(field_alias = '', null, field_alias))) as p_name", "*")
+
+      pkList ++= spark.sql(sql2).selectExpr("lower(coalesce(if(field_alias = '' , null, field_alias),name)) as p_name", "*")
         .orderBy("index")
         .filter(x => "Y" == x.getAs("primary_key"))
         .select("p_name").map(_ (0).toString()).collect().toList
     } else {
-      pkList ++= spark.sql(sql2).selectExpr("lower(coalesce(if(field_alias = '', null, field_alias))) as p_name", "*")
+      pkList ++= spark.sql(sql2).selectExpr("lower(coalesce(if(field_alias = '' , null, field_alias),name)) as p_name", "*")
         .orderBy("index")
         .filter(x => "Y" == x.getAs("business_key"))
         .select("p_name").map(_ (0).toString()).collect().toList

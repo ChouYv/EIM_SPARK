@@ -15,7 +15,7 @@ object dataCheckAndLoad extends Serializable {
   var stgCols:String = _
 
   def dq() = {
-    println(ldgTableName)
+//    println(ldgTableName)
     import spark.implicits._
     val DQRuleMap: Map[String, mutable.HashMap[String, String]] = fieldDf.map(
       r => {
@@ -25,7 +25,7 @@ object dataCheckAndLoad extends Serializable {
         var enumRange: String = ""
         var checkNull: String = ""
 
-        if (r.getAs("field_alias").equals(null) || 0 == r.getAs("field_alias").toString.length) {
+        if (null == r.getAs("field_alias") || 0 == r.getAs("field_alias").toString.length) {
           key = r.getAs("name").toString.toLowerCase()
         } else {
           key = r.getAs("field_alias").toString.toLowerCase()
@@ -56,20 +56,20 @@ object dataCheckAndLoad extends Serializable {
 
       }
     ).collect().toMap
-    DQRuleMap.foreach(println(_))
+//    DQRuleMap.foreach(println(_))
 
     val jobPkList: List[String] = pkList.toList
 
     val selectSql = s"select * from $ldgTableName where eim_dt='${jobDate}'"
 
     val df1: DataFrame = spark.sql(selectSql)
-    df1.persist()
+//    df1.persist()
 
     import org.apache.spark.sql.catalyst.encoders.RowEncoder
     val schema: StructType = df1.schema
       .add("flag", StringType)
     val columns: Array[String] = df1.columns.filter(_ != "eim_dt")
-    println(columns.mkString(","))
+//    println(columns.mkString(","))
     /*
         * @desc
         * @author   Yav
@@ -78,7 +78,7 @@ object dataCheckAndLoad extends Serializable {
     val duplicateFieldList: List[String] = df1.filter(x => {
       var target = 0
       for (elem <- columns) {
-        if (x.getAs(elem) != elem) target = target + 1
+        if (null ==x.getAs(elem) || x.getAs(elem).toString.toLowerCase() != elem) target = target + 1
       }
       if (target == 0) false else true
     }).map(x => {
@@ -98,7 +98,7 @@ object dataCheckAndLoad extends Serializable {
     val checkDF: Dataset[Row] = df1.filter(x => {
       var target = 0
       for (elem <- columns) {
-        if (x.getAs(elem) != elem) target = target + 1
+        if (null ==x.getAs(elem) || x.getAs(elem).toString.toLowerCase() != elem) target = target + 1
       }
       if (target == 0) false else true
     })
@@ -231,7 +231,7 @@ object dataCheckAndLoad extends Serializable {
         var enumRange: String = ""
         var checkNull: String = ""
 
-        if (r.getAs("field_alias").equals(null) || 0 == r.getAs("field_alias").toString.length) {
+        if (null == r.getAs("field_alias") || 0 == r.getAs("field_alias").toString.length) {
           key = r.getAs("name").toString.toLowerCase()
         } else {
           key = r.getAs("field_alias").toString.toLowerCase()
@@ -400,7 +400,7 @@ object dataCheckAndLoad extends Serializable {
         * @date 9/6/22 9:10 AM
     */
     val stgAndRejArr: Array[String] = checkPkDF.columns.filter(!Array("eim_dt", "flag").contains(_))
-    checkPkDF.show()
+//    checkPkDF.show()
     checkPkDF.createOrReplaceTempView("ldgPkToStgPkTable")
 
 
