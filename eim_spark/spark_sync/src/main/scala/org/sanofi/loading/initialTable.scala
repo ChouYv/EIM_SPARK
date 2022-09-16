@@ -86,6 +86,8 @@ object initialTable {
         |    bif.if_physical_deletion,
         |    bif.load_key,
         |    bif.file_type,
+        |    bif.delimiter,
+        |    bif.quote,
         |    lower(bi.source_system)||'_'||lower(coalesce(bif.file_alias,bif.name)) as ddl_name
         |from PgFile bif
         |         left join PgInterface bi on bi.id = bif.interface_id
@@ -102,13 +104,37 @@ object initialTable {
     val pgInterfaceId = df1Row.getAs("bi_id").toString
     val sourceSystem = df1Row.getAs("source_system").toString
     val pgFileId = df1Row.getAs("bif_id").toString
-    val tabCommentCn = df1Row.getAs("tab_comment_cn").toString
     val loadSolution = df1Row.getAs("load_solution").toString
     val fullDelta = df1Row.getAs("full_delta").toString
      ifPhysicalDeletion = df1Row.getAs("if_physical_deletion").toString
      loadKey = df1Row.getAs("load_key").toString
     val fileType = df1Row.getAs("file_type").toString
     val ddlName = df1Row.getAs("ddl_name").toString
+
+    var fileDelimiter =""
+    var fileQuote =""
+
+    var tabCommentCn=""
+    if (null!=df1Row.getAs("tab_comment_cn")) {
+      tabCommentCn = df1Row.getAs("tab_comment_cn").toString
+    }
+
+
+    if (null == df1Row.getAs("delimiter")) {
+      throw new Exception(s"delimiter字段为空")
+    } else {
+       fileDelimiter = df1Row.getAs("delimiter").toString
+    }
+
+    if (null == df1Row.getAs("quote")) {
+      throw new Exception(s"quote字段为空")
+    } else {
+       fileQuote = df1Row.getAs("quote").toString
+      if (fileQuote=="\"") fileQuote="\\\""
+
+    }
+
+
 
     val loadKeyList: Array[String] = loadKey.toLowerCase.split(",")
 
@@ -155,7 +181,7 @@ object initialTable {
       .selectExpr(
         "lower(coalesce(if(field_alias='',null,field_alias),name)) as field_name"
         , "lower(field_type) as field_type"
-        , "regexp_replace(fields_comment_en||'||'||fields_comment_cn,'[.,`''\\/{}$]',' ') as field_comment")
+        , "regexp_replace(nvl(fields_comment_en,' ')||'||'||nvl(fields_comment_cn,' '),'[.,`''\\/{}$]',' ') as field_comment")
       .orderBy("index")
     /*
         * @desc   ldg
@@ -172,6 +198,7 @@ object initialTable {
       if ("CSV" == fileType) {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
           s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
+          s"with serdeproperties('separatorChar' = '$fileDelimiter','quoteChar'     = '$fileQuote')"+
           s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}' \n" +
           s"TBLPROPERTIES ('skip.header.line.count'='1');"
       } else {
@@ -192,7 +219,8 @@ object initialTable {
       if ("CSV" == fileType) {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
           s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
-          s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}_pk' \n" +
+          s"with serdeproperties('separatorChar' = '$fileDelimiter','quoteChar' = '$fileQuote')"+
+        s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}_pk' \n" +
           s"TBLPROPERTIES ('skip.header.line.count'='1');"
       } else {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string); \n"
@@ -211,7 +239,7 @@ object initialTable {
 
     val stgDDLPrd: String = s"drop table if exists stg.${ddlName};\nCREATE TABLE IF NOT EXISTS stg.${ddlName} (\n"
     val stgDDLMid: String = midDF.map(
-      line => "\t`" + line.getAs("field_name").toString + "` string comment '" + line.getAs("field_comment") + "'"
+      line => "\t`" + line.getAs("field_name").toString + "` string comment '" + line.getAs("field_comment").toString.replaceAll("'","") + "'"
     ).collect()
       .mkString(",\n")
     val stgDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
@@ -275,10 +303,11 @@ object initialTable {
     } else if ("Delta" == fullDelta & "full delete full load by key" != loadSolution) {
       partKey = "eim_dt"
     }
+
     val odsDDLPrd: String = s"drop table if exists ods.${ddlName};\nCREATE TABLE IF NOT EXISTS ods.${ddlName} (\n"
     val odsDDLMidOne: String = midDF.filter(
       i => {
-        if (partKey == "loadKey" & loadKeyList.contains(i.getAs("field_name").toString)) false else true
+        if (partKey == "loadKey" && loadKeyList.contains(i.getAs("field_name").toString)) false else true
       }
     ).map(
       line => {
@@ -294,7 +323,7 @@ object initialTable {
             case "bool" => "boolean"
             case _ => "string"
           }
-          ) + " comment '" + line.getAs("field_comment") + "'"
+          ) + " comment '" + line.getAs("field_comment").toString.replaceAll("'","") + "'"
       }
     ).collect()
       .mkString(",\n")

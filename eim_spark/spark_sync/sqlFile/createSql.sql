@@ -38,3 +38,9 @@ INSERT INTO app_upt.load_file_list (load_file_name,drop_create_table_flag,genera
 INSERT INTO app_upt.load_file_list (load_file_name,drop_create_table_flag,generate_tableddl_flag,on_line) VALUES ('wechataccounts',false,false,true);
 INSERT INTO app_upt.load_file_list (load_file_name,drop_create_table_flag,generate_tableddl_flag,on_line) VALUES ('wechatuserbindings',false,false,true);
 INSERT INTO app_upt.load_file_list (load_file_name,drop_create_table_flag,generate_tableddl_flag,on_line) VALUES ('wechatusers',false,false,true);
+
+
+
+
+
+

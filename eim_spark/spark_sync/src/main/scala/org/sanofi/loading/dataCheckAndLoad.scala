@@ -21,9 +21,9 @@ object dataCheckAndLoad extends Serializable {
       r => {
         var key: String = ""
         var checkType: String = ""
-        var checkEnum: String = ""
+        var checkEnum: String = "N"
         var enumRange: String = ""
-        var checkNull: String = ""
+        var checkNull: String = "N"
 
         if (null == r.getAs("field_alias") || 0 == r.getAs("field_alias").toString.length) {
           key = r.getAs("name").toString.toLowerCase()
@@ -38,18 +38,25 @@ object dataCheckAndLoad extends Serializable {
           case _ => ""
         }
 
-        checkEnum = r.getAs("if_enum_field").toString match {
-          case "Y" => {
-            enumRange = r.getAs("value_range")
-            "Y"
+
+        if(null!=r.getAs("if_enum_field")){
+          checkEnum = r.getAs("if_enum_field").toString match {
+            case "Y" => {
+              enumRange = r.getAs("value_range")
+              "Y"
+            }
+            case _ => "N"
           }
-          case _ => "N"
         }
 
-        checkNull = r.getAs("if_not_null").toString match {
-          case "Y" => "Y"
-          case _ => "N"
+
+        if(null!=r.getAs("if_not_null")){
+          checkNull = r.getAs("if_not_null").toString match {
+            case "Y" => "Y"
+            case _ => "N"
+          }
         }
+
 
 
         key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
