@@ -23,7 +23,8 @@ object loadApp {
     //    println(jobDate + "\n")
     println(jobMap + "\n")
     //    println(envParameter + "\n")
-    val spark = getOrCreateSparkSession("local[4]", s"auto_load_$jobDate", "WARN")
+    val spark = getOrCreateSparkSession("yarn", s"auto_load_$jobDate", "WARN")
+//    val spark = getOrCreateSparkSession("local[4]", s"auto_load_$jobDate", "WARN")
 
 
     initialPgTable(spark, envParameter)
@@ -84,15 +85,15 @@ object loadApp {
           * @author   Yav
           * @date 9/12/22 10:59 PM
       */
-      val odsColumns: String = spark.sql(s"select * from $odsTableName limit 1").dtypes.map(x => {
-        "cast(" + x._1 + " as " + x._2.replace("Type", "") + ") as " + x._1
-      }).mkString(",")
+//      val odsColumns: String = spark.sql(s"select * from $odsTableName limit 1").dtypes.map(x => {
+//        "cast(" + x._1 + " as " + x._2.replace("Type", "") + ") as " + x._1
+//      }).mkString(",")
 
-      partKey match {
-        case "loadKey" => ""
-        case "eim_dt" => spark.sql(s"insert overwrite table ${odsTableName} partition(eim_dt) select $odsColumns from loadToOds ");println(s"${odsTableName}加载完成")
-        case _ => ""
-      }
+//      partKey match {
+//        case "loadKey" => ""
+//        case "eim_dt" => spark.sql(s"insert overwrite table ${odsTableName} partition(eim_dt) select $odsColumns from loadToOds ");println(s"${odsTableName}加载完成")
+//        case _ => ""
+//      }
     }
 
 

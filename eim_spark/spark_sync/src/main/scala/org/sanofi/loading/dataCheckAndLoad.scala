@@ -12,10 +12,10 @@ import java.util.Date
 
 object dataCheckAndLoad extends Serializable {
   val spark: SparkSession = getInitialSparkSession
-  var stgCols:String = _
+  var stgCols: String = _
 
   def dq() = {
-//    println(ldgTableName)
+    //    println(ldgTableName)
     import spark.implicits._
     val DQRuleMap: Map[String, mutable.HashMap[String, String]] = fieldDf.map(
       r => {
@@ -24,6 +24,7 @@ object dataCheckAndLoad extends Serializable {
         var checkEnum: String = "N"
         var enumRange: String = ""
         var checkNull: String = "N"
+        var dateFormatted: String = ""
 
         if (null == r.getAs("field_alias") || 0 == r.getAs("field_alias").toString.length) {
           key = r.getAs("name").toString.toLowerCase()
@@ -37,20 +38,23 @@ object dataCheckAndLoad extends Serializable {
           case "date" => "dateCheck"
           case _ => ""
         }
-
-
-        if(null!=r.getAs("if_enum_field")){
-          checkEnum = r.getAs("if_enum_field").toString match {
-            case "Y" => {
-              enumRange = r.getAs("value_range")
-              "Y"
-            }
-            case _ => "N"
+        if ("timestampCheck" == checkType || "dateCheck" == checkType) {
+          dateFormatted=r.getAs("timestamp_format")
           }
-        }
 
 
-        if(null!=r.getAs("if_not_null")){
+          if (null != r.getAs("if_enum_field")) {
+            checkEnum = r.getAs("if_enum_field").toString match {
+              case "Y" => {
+                enumRange = r.getAs("value_range")
+                "Y"
+              }
+              case _ => "N"
+            }
+          }
+
+
+        if (null != r.getAs("if_not_null")) {
           checkNull = r.getAs("if_not_null").toString match {
             case "Y" => "Y"
             case _ => "N"
@@ -58,25 +62,22 @@ object dataCheckAndLoad extends Serializable {
         }
 
 
-
-        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
+        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull,"dateFormatted"->dateFormatted)
 
       }
     ).collect().toMap
-//    DQRuleMap.foreach(println(_))
 
     val jobPkList: List[String] = pkList.toList
 
     val selectSql = s"select * from $ldgTableName where eim_dt='${jobDate}'"
 
     val df1: DataFrame = spark.sql(selectSql)
-//    df1.persist()
 
     import org.apache.spark.sql.catalyst.encoders.RowEncoder
     val schema: StructType = df1.schema
-      .add("flag", StringType)
+      .add("eim_flag", StringType)
     val columns: Array[String] = df1.columns.filter(_ != "eim_dt")
-//    println(columns.mkString(","))
+    //    println(columns.mkString(","))
     /*
         * @desc
         * @author   Yav
@@ -85,7 +86,7 @@ object dataCheckAndLoad extends Serializable {
     val duplicateFieldList: List[String] = df1.filter(x => {
       var target = 0
       for (elem <- columns) {
-        if (null ==x.getAs(elem) || x.getAs(elem).toString.toLowerCase() != elem) target = target + 1
+        if (null == x.getAs(elem) || x.getAs(elem).toString.toLowerCase() != elem) target = target + 1
       }
       if (target == 0) false else true
     }).map(x => {
@@ -105,7 +106,7 @@ object dataCheckAndLoad extends Serializable {
     val checkDF: Dataset[Row] = df1.filter(x => {
       var target = 0
       for (elem <- columns) {
-        if (null ==x.getAs(elem) || x.getAs(elem).toString.toLowerCase() != elem) target = target + 1
+        if (null == x.getAs(elem) || x.getAs(elem).toString.toLowerCase() != elem) target = target + 1
       }
       if (target == 0) false else true
     })
@@ -113,12 +114,12 @@ object dataCheckAndLoad extends Serializable {
         row => {
           val buffer = Row.unapplySeq(row).get.map(_.asInstanceOf[String]).toBuffer
           var flagArr: Array[String] = Array()
-          var errLine :String=""
+          var errLine: String = ""
           var initInt = 0
           for (elem <- columns) {
 
-            if (null == row.getAs(elem)){
-              if (errLine=="")errLine="错行数据"
+            if (null == row.getAs(elem)) {
+              if (errLine == "") errLine = "错行数据"
             }
             /*
                 * @desc   一层判断 ，后续判断只校验非空和null值
@@ -126,7 +127,7 @@ object dataCheckAndLoad extends Serializable {
                 * @date 9/5/22 10:26 AM
             */
             if (null == row.getAs(elem) || row.getAs(elem).toString.isEmpty) {
-              if ("Y" == DQRuleMap(elem)("checkNull") && row.getAs(elem)!=null) {
+              if ("Y" == DQRuleMap(elem)("checkNull") && row.getAs(elem) != null) {
                 flagArr = flagArr :+ s"${elem}列未通过[非空检查]"
               }
             }
@@ -142,11 +143,11 @@ object dataCheckAndLoad extends Serializable {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-数值格式] errValue->${row.getAs(elem).toString}"
                   }
                 case "timestampCheck" =>
-                  if (!checkTimestamp(row.getAs(elem).toString, "")) {
+                  if (!checkTimestamp(row.getAs(elem).toString, DQRuleMap(elem)("dateFormatted"))) {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-时间格式] errValue->${row.getAs(elem).toString}"
                   } else {
-                    buffer.update(initInt,updateTimestamp(row.getAs(elem).toString))
-                }
+                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString,DQRuleMap(elem)("dateFormatted")))
+                  }
                 case "dateCheck" =>
                   if (!checkTimestamp(row.getAs(elem).toString, "")) {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-时间格式] errValue->${row.getAs(elem).toString}"
@@ -165,7 +166,7 @@ object dataCheckAndLoad extends Serializable {
               }
 
             }
-            initInt = initInt+1
+            initInt = initInt + 1
           }
           var key = ""
           if (0 == jobPkList.length) {
@@ -176,7 +177,7 @@ object dataCheckAndLoad extends Serializable {
             }
           }
           if (duplicateFieldList.contains(key)) flagArr = flagArr :+ s"主键未通过[唯一性校验]"
-          if(errLine!="") flagArr = flagArr:+errLine
+          if (errLine != "") flagArr = flagArr :+ errLine
           val flagStr: String = if (!flagArr.isEmpty) flagArr.mkString("||") else ""
 
 
@@ -200,43 +201,41 @@ object dataCheckAndLoad extends Serializable {
         * @author   Yav
         * @date 9/6/22 9:10 AM
     */
-    val stgAndRejArr: Array[String] = checkDF.columns.filter(!Array("eim_dt", "flag").contains(_))
+    val stgAndRejArr: Array[String] = checkDF.columns.filter(!Array("eim_dt", "eim_flag").contains(_))
     checkDF.createOrReplaceTempView("ldgToStgTable")
-    stgCols=stgAndRejArr.mkString(",")
+    stgCols = stgAndRejArr.mkString(",")
 
     val sumLong: Long = checkDF.count()
-    println(s"${ldgTableName}表总数据量:" +sumLong+"行")
+    println(s"${ldgTableName}表总数据量:" + sumLong + "行")
 
     val insertStgSql = s"insert overwrite table ${stgTableName} partition(eim_dt='${jobDate}') " +
-      s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where flag ='' "
+      s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where eim_flag ='' "
     spark.sql(insertStgSql)
-    val stgLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where flag ='' ").count()
-    println(s"插入到${stgTableName}表总数据量:" +stgLong+"行")
+    val stgLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where eim_flag ='' ").count()
+    println(s"插入到${stgTableName}表总数据量:" + stgLong + "行")
 
     val insertRejSql = s"insert overwrite table ${rejTableName} partition(eim_dt='${jobDate}') " +
-      s"select ${stgAndRejArr.mkString(",")},flag from ldgToStgTable where (${stgAndRejArr.map(_+" is not null ").mkString(" or ")}) and flag <>'' "
+      s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and eim_flag <>'' "
     spark.sql(insertRejSql)
-    val rejLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and flag <>'' ").count()
-    println(s"插入到${rejTableName}表总数据量:" +rejLong+"行")
+    val rejLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and eim_flag <>'' ").count()
+    println(s"插入到${rejTableName}表总数据量:" + rejLong + "行")
 
-    val nullLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is  null ").mkString(" and ")}) and flag <>''").count()
-    println(s"${ldgTableName}表数据因错行产生空行量:" +nullLong+"行")
-
-
-
+    val nullLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is  null ").mkString(" and ")}) and eim_flag <>''").count()
+    println(s"${ldgTableName}表数据因错行产生空行量:" + nullLong + "行")
 
 
   }
 
-  def dqPk()={
+  def dqPk() = {
     import spark.implicits._
-    val DQRuleMap: Map[String, mutable.HashMap[String, String]] = fieldDf.filter(x=>pkList.toList.contains(x.getAs("p_name"))).map(
+    val DQRuleMap: Map[String, mutable.HashMap[String, String]] = fieldDf.filter(x => pkList.toList.contains(x.getAs("p_name"))).map(
       r => {
         var key: String = ""
         var checkType: String = ""
         var checkEnum: String = ""
         var enumRange: String = ""
         var checkNull: String = ""
+        var dateFormatted: String = ""
 
         if (null == r.getAs("field_alias") || 0 == r.getAs("field_alias").toString.length) {
           key = r.getAs("name").toString.toLowerCase()
@@ -250,7 +249,9 @@ object dataCheckAndLoad extends Serializable {
           case "date" => "dateCheck"
           case _ => ""
         }
-
+        if ("timestampCheck" == checkType || "dateCheck" == checkType) {
+          dateFormatted = r.getAs("timestamp_format")
+        }
         checkEnum = r.getAs("if_enum_field").toString match {
           case "Y" => {
             enumRange = r.getAs("value_range")
@@ -265,14 +266,15 @@ object dataCheckAndLoad extends Serializable {
         }
 
 
-        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
+//        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
+        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull,"dateFormatted"->dateFormatted)
 
       }
     ).collect().toMap
     DQRuleMap.foreach(println(_))
 
     val jobPkList: List[String] = pkList.toList
-//
+    //
     val selectSql = s"select * from $ldgPkTableName where eim_dt='${jobDate}'"
 
     val df1: DataFrame = spark.sql(selectSql)
@@ -280,7 +282,7 @@ object dataCheckAndLoad extends Serializable {
 
     import org.apache.spark.sql.catalyst.encoders.RowEncoder
     val schema: StructType = df1.schema
-      .add("flag", StringType)
+      .add("eim_flag", StringType)
     val columns: Array[String] = df1.columns.filter(_ != "eim_dt")
     println(columns.mkString(","))
     /*
@@ -348,10 +350,10 @@ object dataCheckAndLoad extends Serializable {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-数值格式] errValue->${row.getAs(elem).toString}"
                   }
                 case "timestampCheck" =>
-                  if (!checkTimestamp(row.getAs(elem).toString, "")) {
+                  if (!checkTimestamp(row.getAs(elem).toString, DQRuleMap(elem)("dateFormatted"))) {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-时间格式] errValue->${row.getAs(elem).toString}"
                   } else {
-                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString))
+                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString,DQRuleMap(elem)("dateFormatted")))
                   }
                 case "dateCheck" =>
                   if (!checkTimestamp(row.getAs(elem).toString, "")) {
@@ -406,8 +408,8 @@ object dataCheckAndLoad extends Serializable {
         * @author   Yav
         * @date 9/6/22 9:10 AM
     */
-    val stgAndRejArr: Array[String] = checkPkDF.columns.filter(!Array("eim_dt", "flag").contains(_))
-//    checkPkDF.show()
+    val stgAndRejArr: Array[String] = checkPkDF.columns.filter(!Array("eim_dt", "eim_flag").contains(_))
+    //    checkPkDF.show()
     checkPkDF.createOrReplaceTempView("ldgPkToStgPkTable")
 
 
@@ -415,18 +417,18 @@ object dataCheckAndLoad extends Serializable {
     println(s"${ldgPkTableName}表总数据量:" + sumLong + "行")
 
     val insertStgPkSql = s"insert overwrite table ${stgPkTableName} partition(eim_dt='${jobDate}') " +
-      s"select ${stgAndRejArr.mkString(",")} from ldgPkToStgPkTable where flag ='' "
+      s"select ${stgAndRejArr.mkString(",")} from ldgPkToStgPkTable where eim_flag ='' "
     spark.sql(insertStgPkSql)
-    val stgLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")} from ldgPkToStgPkTable where flag ='' ").count()
+    val stgLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")} from ldgPkToStgPkTable where eim_flag ='' ").count()
     println(s"插入到${stgPkTableName}表总数据量:" + stgLong + "行")
 
     val insertPkRejSql = s"insert overwrite table ${rejPkTableName} partition(eim_dt='${jobDate}') " +
-      s"select ${stgAndRejArr.mkString(",")},flag from ldgPkToStgPkTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and flag <>'' "
+      s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgPkToStgPkTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and eim_flag <>'' "
     spark.sql(insertPkRejSql)
-    val rejLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},flag from ldgPkToStgPkTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and flag <>'' ").count()
+    val rejLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgPkToStgPkTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and eim_flag <>'' ").count()
     println(s"插入到${rejPkTableName}表总数据量:" + rejLong + "行")
 
-    val nullLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},flag from ldgPkToStgPkTable where (${stgAndRejArr.map(_ + " is  null ").mkString(" and ")}) and flag <>''").count()
+    val nullLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgPkToStgPkTable where (${stgAndRejArr.map(_ + " is  null ").mkString(" and ")}) and eim_flag <>''").count()
     println(s"${ldgPkTableName}表数据因错行产生空行量:" + nullLong + "行")
   }
 
@@ -440,67 +442,37 @@ object dataCheckAndLoad extends Serializable {
 
   def checkTimestamp(str: String, dateFormat: String): Boolean = {
     var flag: Boolean = true
-
-    val format1 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-    try {
-      val date1: Date = format1.parse(str)
-      flag = (str.equals(format1.format(date1)))
-    }
-    catch {
-      case e: Exception => {
-        flag = false
-      }
-    }
-
-    if (!flag) {
-      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
-      try {
-        val date2: Date = format2.parse(str)
-        flag = (str.equals(format2.format(date2)))
-      }
-      catch {
-        case e: Exception => {
-          flag = false
-        }
-      }
-    }
-
-    if (!flag) {
-      val format3 = new SimpleDateFormat("yyyy-MM-dd")
-      try {
-        val date3: Date = format3.parse(str)
-        flag = (str.equals(format3.format(date3)))
-      }
-      catch {
-        case e: Exception => {
-          flag = false
-        }
-      }
-    }
-
+    if (str.length >= dateFormat.length) {
+      val newStr: String = str.substring(0, dateFormat.length)
+      val formatStan = new SimpleDateFormat(dateFormat)
+      flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
+    } else flag =false
     flag
+
   }
 
 
-  def updateTimestamp(str: String): String = {
-    var newStr = str
-    if(str.contains("/")){
-      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
-      val format3 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+  def updateTimestamp(str: String,dateFormatted:String): String = {
+    val newStr: String = str.substring(0, dateFormatted.length)
+    val formatStan = new SimpleDateFormat(dateFormatted)
+    val yyyyMMddHHmmssFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    yyyyMMddHHmmssFormat.format(formatStan.parse(newStr))
+//    flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
+//
+//
+//
+//    var newStr = str
+//    if (str.contains("/")) {
+//      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
+//      val format3 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+//
+//      val date2: Date = format2.parse(str)
+//      newStr = format3.format(date2)
+//    }
 
-      val date2: Date = format2.parse(str)
-      newStr = format3.format(date2)
-    }
-
-    if (str.length=="yyyy-MM-dd".length)  newStr=str+" 00:00:00"
-    newStr
+//    if (str.length == "yyyy-MM-dd".length) newStr = str + " 00:00:00"
+//    newStr
   }
-
-
-
-
-
-
 
 
   def checkEnum(value: String, range: String): Boolean = {
