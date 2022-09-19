@@ -112,7 +112,7 @@ object initialTable {
     val ddlName = df1Row.getAs("ddl_name").toString
 
     var fileDelimiter =""
-    var fileQuote =""
+    var fileQuote ="\""
 
     var tabCommentCn=""
     if (null!=df1Row.getAs("tab_comment_cn")) {
@@ -127,7 +127,8 @@ object initialTable {
     }
 
     if (null == df1Row.getAs("quote")) {
-      throw new Exception(s"quote字段为空")
+//      throw new Exception(s"quote字段为空")
+      println("quote字段为空,以默认值====》\"运行")
     } else {
        fileQuote = df1Row.getAs("quote").toString
       if (fileQuote=="\"") fileQuote="\\\""
@@ -268,7 +269,7 @@ object initialTable {
         * @date 9/11/22 9:54 PM
     */
     val rejDDLPrd: String = s"drop table if exists rej.ldg_${ddlName}_rej;\nCREATE TABLE IF NOT EXISTS rej.ldg_${ddlName}_rej (\n"
-    val rejDDLMid: String = stgDDLMid + ",\n\t`flag` string comment '标签'"
+    val rejDDLMid: String = stgDDLMid + ",\n\t`eim_flag` string comment '标签'"
     val rejDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
       s"ROW FORMAT DELIMITED \n" +
       s"FIELDS TERMINATED BY '\\001' \n" +
@@ -283,7 +284,7 @@ object initialTable {
         * @date 9/11/22 9:55 PM
     */
     val rejPkDDLPrd: String = s"drop table if exists rej.ldg_${ddlName}_pk;\nCREATE TABLE IF NOT EXISTS rej.ldg_${ddlName}_pk (\n"
-    val rejPkDDLMid: String = ldgPkDDLMid + ",\n\t`flag` string "
+    val rejPkDDLMid: String = ldgPkDDLMid + ",\n\t`eim_flag` string "
     val rejPkDDLSuf: String = stgDDLSuf
 
     val rejPkDDLSql = rejPkDDLPrd + rejPkDDLMid + rejPkDDLSuf
@@ -305,6 +306,15 @@ object initialTable {
     }
 
     val odsDDLPrd: String = s"drop table if exists ods.${ddlName};\nCREATE TABLE IF NOT EXISTS ods.${ddlName} (\n"
+
+    println(partKey)
+    println(loadKeyList.mkString(","))
+    midDF.filter(
+      i => {
+        if (partKey == "loadKey" && loadKeyList.contains(i.getAs("field_name").toString)) false else true
+      }
+    ).show()
+
     val odsDDLMidOne: String = midDF.filter(
       i => {
         if (partKey == "loadKey" && loadKeyList.contains(i.getAs("field_name").toString)) false else true
