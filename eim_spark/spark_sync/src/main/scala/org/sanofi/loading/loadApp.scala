@@ -23,7 +23,7 @@ object loadApp {
     //    println(jobDate + "\n")
     println(jobMap + "\n")
     //    println(envParameter + "\n")
-    val spark = getOrCreateSparkSession("yarn", s"auto_load_$jobDate", "WARN")
+    val spark = getOrCreateSparkSession("local[4]", s"auto_load_$jobDate", "WARN")
 
 
     initialPgTable(spark, envParameter)

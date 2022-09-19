@@ -305,6 +305,15 @@ object initialTable {
     }
 
     val odsDDLPrd: String = s"drop table if exists ods.${ddlName};\nCREATE TABLE IF NOT EXISTS ods.${ddlName} (\n"
+
+    println(partKey)
+    println(loadKeyList.mkString(","))
+    midDF.filter(
+      i => {
+        if (partKey == "loadKey" && loadKeyList.contains(i.getAs("field_name").toString)) false else true
+      }
+    ).show()
+
     val odsDDLMidOne: String = midDF.filter(
       i => {
         if (partKey == "loadKey" && loadKeyList.contains(i.getAs("field_name").toString)) false else true
