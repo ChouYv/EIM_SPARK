@@ -127,7 +127,7 @@ object initialTable extends Logging with Serializable {
        fileDelimiter = df1Row.getAs("delimiter").toString
     }
 
-    if (null == df1Row.getAs("quote")) {
+    if (null == df1Row.getAs("quote") || "" ==df1Row.getAs("quote")) {
 //      throw new Exception(s"quote字段为空")
       println("quote字段为空,以默认值====》\"运行")
     } else {

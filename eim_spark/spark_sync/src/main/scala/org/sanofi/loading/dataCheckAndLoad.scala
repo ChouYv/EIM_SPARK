@@ -202,6 +202,8 @@ object dataCheckAndLoad extends Serializable {
         * @date 9/6/22 9:10 AM
     */
     val stgAndRejArr: Array[String] = checkDF.columns.filter(!Array("eim_dt", "eim_flag").contains(_))
+    println(checkDF.columns.mkString(","))
+    println(stgAndRejArr)
     checkDF.createOrReplaceTempView("ldgToStgTable")
     stgCols = stgAndRejArr.mkString(",")
 
@@ -210,12 +212,14 @@ object dataCheckAndLoad extends Serializable {
 
     val insertStgSql = s"insert overwrite table ${stgTableName} partition(eim_dt='${jobDate}') " +
       s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where eim_flag ='' "
+    println(insertStgSql)
     spark.sql(insertStgSql)
     val stgLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")} from ldgToStgTable where eim_flag ='' ").count()
     println(s"插入到${stgTableName}表总数据量:" + stgLong + "行")
 
     val insertRejSql = s"insert overwrite table ${rejTableName} partition(eim_dt='${jobDate}') " +
       s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and eim_flag <>'' "
+    println(insertRejSql)
     spark.sql(insertRejSql)
     val rejLong: Long = spark.sql(s"select ${stgAndRejArr.mkString(",")},eim_flag from ldgToStgTable where (${stgAndRejArr.map(_ + " is not null ").mkString(" or ")}) and eim_flag <>'' ").count()
     println(s"插入到${rejTableName}表总数据量:" + rejLong + "行")
