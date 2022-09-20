@@ -39,19 +39,19 @@ object dataCheckAndLoad extends Serializable {
           case _ => ""
         }
         if ("timestampCheck" == checkType || "dateCheck" == checkType) {
-          dateFormatted=r.getAs("timestamp_format")
-          }
+          dateFormatted = r.getAs("timestamp_format")
+        }
 
 
-          if (null != r.getAs("if_enum_field")) {
-            checkEnum = r.getAs("if_enum_field").toString match {
-              case "Y" => {
-                enumRange = r.getAs("value_range")
-                "Y"
-              }
-              case _ => "N"
+        if (null != r.getAs("if_enum_field")) {
+          checkEnum = r.getAs("if_enum_field").toString match {
+            case "Y" => {
+              enumRange = r.getAs("value_range")
+              "Y"
             }
+            case _ => "N"
           }
+        }
 
 
         if (null != r.getAs("if_not_null")) {
@@ -62,7 +62,7 @@ object dataCheckAndLoad extends Serializable {
         }
 
 
-        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull,"dateFormatted"->dateFormatted)
+        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull, "dateFormatted" -> dateFormatted)
 
       }
     ).collect().toMap
@@ -126,8 +126,8 @@ object dataCheckAndLoad extends Serializable {
                 * @author   Yav
                 * @date 9/5/22 10:26 AM
             */
-            if (null == row.getAs(elem) || row.getAs(elem).toString.isEmpty) {
-              if ("Y" == DQRuleMap(elem)("checkNull") && row.getAs(elem) != null) {
+            if (null == row.getAs(elem) || row.getAs(elem).toString.isEmpty || "<None>" == row.getAs(elem)) {
+              if ("Y" == DQRuleMap(elem)("checkNull") && (row.getAs(elem) != null || row.getAs(elem) != "<None>")) {
                 flagArr = flagArr :+ s"${elem}列未通过[非空检查]"
               }
             }
@@ -146,7 +146,7 @@ object dataCheckAndLoad extends Serializable {
                   if (!checkTimestamp(row.getAs(elem).toString, DQRuleMap(elem)("dateFormatted"))) {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-时间格式] errValue->${row.getAs(elem).toString}"
                   } else {
-                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString,DQRuleMap(elem)("dateFormatted")))
+                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString, DQRuleMap(elem)("dateFormatted")))
                   }
                 case "dateCheck" =>
                   if (!checkTimestamp(row.getAs(elem).toString, "")) {
@@ -204,6 +204,7 @@ object dataCheckAndLoad extends Serializable {
     val stgAndRejArr: Array[String] = checkDF.columns.filter(!Array("eim_dt", "eim_flag").contains(_))
     println(checkDF.columns.mkString(","))
     println(stgAndRejArr)
+    checkDF.show(2)
     checkDF.createOrReplaceTempView("ldgToStgTable")
     stgCols = stgAndRejArr.mkString(",")
 
@@ -270,8 +271,8 @@ object dataCheckAndLoad extends Serializable {
         }
 
 
-//        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
-        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull,"dateFormatted"->dateFormatted)
+        //        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull)
+        key -> mutable.HashMap("checkType" -> checkType, "checkEnum" -> checkEnum, "enumRange" -> enumRange, "checkNull" -> checkNull, "dateFormatted" -> dateFormatted)
 
       }
     ).collect().toMap
@@ -337,8 +338,8 @@ object dataCheckAndLoad extends Serializable {
                 * @author   Yav
                 * @date 9/5/22 10:26 AM
             */
-            if (null == row.getAs(elem) || row.getAs(elem).toString.isEmpty) {
-              if ("Y" == DQRuleMap(elem)("checkNull") && row.getAs(elem) != null) {
+            if (null == row.getAs(elem) || row.getAs(elem).toString.isEmpty || "<None>" == row.getAs(elem)) {
+              if ("Y" == DQRuleMap(elem)("checkNull") && (row.getAs(elem) != null || row.getAs(elem) != "<None>")) {
                 flagArr = flagArr :+ s"${elem}列未通过[非空检查]"
               }
             }
@@ -357,7 +358,7 @@ object dataCheckAndLoad extends Serializable {
                   if (!checkTimestamp(row.getAs(elem).toString, DQRuleMap(elem)("dateFormatted"))) {
                     flagArr = flagArr :+ s"${elem}列未通过[数据格式校验-时间格式] errValue->${row.getAs(elem).toString}"
                   } else {
-                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString,DQRuleMap(elem)("dateFormatted")))
+                    buffer.update(initInt, updateTimestamp(row.getAs(elem).toString, DQRuleMap(elem)("dateFormatted")))
                   }
                 case "dateCheck" =>
                   if (!checkTimestamp(row.getAs(elem).toString, "")) {
@@ -413,7 +414,6 @@ object dataCheckAndLoad extends Serializable {
         * @date 9/6/22 9:10 AM
     */
     val stgAndRejArr: Array[String] = checkPkDF.columns.filter(!Array("eim_dt", "eim_flag").contains(_))
-    //    checkPkDF.show()
     checkPkDF.createOrReplaceTempView("ldgPkToStgPkTable")
 
 
@@ -450,32 +450,32 @@ object dataCheckAndLoad extends Serializable {
       val newStr: String = str.substring(0, dateFormat.length)
       val formatStan = new SimpleDateFormat(dateFormat)
       flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
-    } else flag =false
+    } else flag = false
     flag
 
   }
 
 
-  def updateTimestamp(str: String,dateFormatted:String): String = {
+  def updateTimestamp(str: String, dateFormatted: String): String = {
     val newStr: String = str.substring(0, dateFormatted.length)
     val formatStan = new SimpleDateFormat(dateFormatted)
     val yyyyMMddHHmmssFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
     yyyyMMddHHmmssFormat.format(formatStan.parse(newStr))
-//    flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
-//
-//
-//
-//    var newStr = str
-//    if (str.contains("/")) {
-//      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
-//      val format3 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-//
-//      val date2: Date = format2.parse(str)
-//      newStr = format3.format(date2)
-//    }
+    //    flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
+    //
+    //
+    //
+    //    var newStr = str
+    //    if (str.contains("/")) {
+    //      val format2 = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss")
+    //      val format3 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+    //
+    //      val date2: Date = format2.parse(str)
+    //      newStr = format3.format(date2)
+    //    }
 
-//    if (str.length == "yyyy-MM-dd".length) newStr = str + " 00:00:00"
-//    newStr
+    //    if (str.length == "yyyy-MM-dd".length) newStr = str + " 00:00:00"
+    //    newStr
   }
 
 

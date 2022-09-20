@@ -132,9 +132,8 @@ object initialTable extends Logging with Serializable {
       println("quote字段为空,以默认值====》\"运行")
     } else {
        fileQuote = df1Row.getAs("quote").toString
-      if (fileQuote=="\"") fileQuote="\\\""
-
     }
+    if (fileQuote=="\"") fileQuote="\\\""
 
 
 
