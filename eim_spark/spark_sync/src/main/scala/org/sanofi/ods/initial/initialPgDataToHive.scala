@@ -48,7 +48,8 @@ object initialPgDataToHive extends Serializable with Logging {
         * @author   Yav
         * @date 9/20/22 10:55 AM
     */
-    val spark: SparkSession = getOrCreateSparkSession("yarn", "ods_initial_pg_source", "WARN")
+//    val spark: SparkSession = getOrCreateSparkSession("yarn", "ods_initial_pg_source", "WARN")
+    val spark: SparkSession = getOrCreateSparkSession("local[4]", "ods_initial_pg_source", "WARN")
 
 
     /*
@@ -99,12 +100,22 @@ object initialPgDataToHive extends Serializable with Logging {
           * @date 9/21/22 10:43 AM
       */
       val fieldList = new ListBuffer[String]
-      val parArr: Array[String] = spark.sql(s"show partitions $odsFileName")
-        .head(1)(0).get(0).toString.split("/")
-      for (elem <- parArr) {
-        fieldList.append(elem.split("=")(0))
-      }
-      val parKey: String = fieldList.mkString(",")
+      val value: String = spark.sql(s"show create table $odsFileName").head()(0).toString
+//      val value: String = spark.sql(s"show create table ods.test").head()(0).toString
+      val i: Int = value.indexOf("PARTITIONED BY ")
+      val str: String = value.substring(i+13,value.length)
+      val s: Int = str.indexOf("(")
+      val e: Int = str.indexOf(")")
+      val parKey: String = str.substring(s+1, e)
+
+
+
+//      val parArr: Array[String] = spark.sql(s"show partitions $odsFileName")
+//        .head(1)(0).get(0).toString.split("/")
+//      for (elem <- parArr) {
+//        fieldList.append(elem.split("=")(0))
+//      }
+//      val parKey: String = fieldList.mkString(",")
 
       /*
                 * @desc   拼接嵌套SQL 使PG到顺序一致
