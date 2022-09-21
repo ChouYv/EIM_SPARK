@@ -446,7 +446,11 @@ object dataCheckAndLoad extends Serializable {
     if (str.length >= dateFormat.length) {
       val newStr: String = str.substring(0, dateFormat.length)
       val formatStan = new SimpleDateFormat(dateFormat)
-      flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
+      try {
+        flag = newStr.equals(formatStan.format(formatStan.parse(newStr)))
+      } catch {
+        case _ => return false
+      }
     } else flag = false
     flag
 
