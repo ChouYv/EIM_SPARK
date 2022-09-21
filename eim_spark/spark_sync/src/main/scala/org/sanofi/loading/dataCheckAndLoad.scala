@@ -182,11 +182,7 @@ object dataCheckAndLoad extends Serializable {
 
 
 
-          /*
-              * @desc   将所有时间修改为 yyyy-MM-dd HH:mm:ss
-              * @author   Yav
-              * @date 9/12/22 6:51 PM
-          */
+
 
 
           buffer.append(flagStr)
@@ -202,8 +198,9 @@ object dataCheckAndLoad extends Serializable {
         * @date 9/6/22 9:10 AM
     */
     val stgAndRejArr: Array[String] = checkDF.columns.filter(!Array("eim_dt", "eim_flag").contains(_))
-    println(checkDF.columns.mkString(","))
-    println(stgAndRejArr)
+    println("ldg字段"+checkDF.columns.mkString(","))
+    println("ldg去除后的字段数"+stgAndRejArr.mkString(","))
+    checkDF.show(true)
     checkDF.show(2)
     checkDF.createOrReplaceTempView("ldgToStgTable")
     stgCols = stgAndRejArr.mkString(",")
