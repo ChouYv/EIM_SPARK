@@ -24,7 +24,7 @@ object initialTable extends Logging with Serializable {
   var rejPkTableName: String = _
   var ifPhysicalDeletion:String= _
   var pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
-  var loadKey:String = ""
+  var loadKey:String =_
   var partKey: String = _
 
   def initialPgTable(inputSpark: SparkSession, env: String) = {
@@ -108,10 +108,7 @@ object initialTable extends Logging with Serializable {
     val loadSolution = df1Row.getAs("load_solution").toString
     val fullDelta = df1Row.getAs("full_delta").toString
      ifPhysicalDeletion = df1Row.getAs("if_physical_deletion").toString
-    if (null!=df1Row.getAs("load_key")){
-      loadKey = df1Row.getAs("load_key").toString
-    }
-
+     loadKey = df1Row.getAs("load_key").toString
     val fileType = df1Row.getAs("file_type").toString
     val ddlName = df1Row.getAs("ddl_name").toString
 
