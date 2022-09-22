@@ -7,6 +7,7 @@ import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
 import java.util
 import java.util.Properties
+import scala.collection.convert.ImplicitConversions.`list asScalaBuffer`
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
@@ -48,8 +49,8 @@ object initialPgDataToHive extends Serializable with Logging {
         * @author   Yav
         * @date 9/20/22 10:55 AM
     */
-//    val spark: SparkSession = getOrCreateSparkSession("yarn", "ods_initial_pg_source", "WARN")
-    val spark: SparkSession = getOrCreateSparkSession("local[4]", "ods_initial_pg_source", "WARN")
+    val spark: SparkSession = getOrCreateSparkSession("yarn", "ods_initial_pg_source", "WARN")
+    //    val spark: SparkSession = getOrCreateSparkSession("local[4]", "ods_initial_pg_source", "WARN")
 
 
     /*
@@ -75,23 +76,28 @@ object initialPgDataToHive extends Serializable with Logging {
         * @author   Yav
         * @date 9/20/22 4:14 PM 
     */
-    import spark.implicits._
-    val tuplesJobList: Array[(String, String, String)] = jobDetailList
-      .selectExpr("lower(coalesce(if(file_ailas_nm = '' , null, file_ailas_nm),file_nm)) as file_name", "init_sql","source_system_cd")
-      .map(
-        x =>
-          (x.getAs("file_name").toString, x.getAs("init_sql").toString, x.getAs("source_system_cd").toString.toLowerCase)
-      )
-      .collect()
 
-    for (elem <- tuplesJobList) {
+
+    import spark.implicits._
+val tuplesJobArr: Array[Array[String]] = jobDetailList
+  .selectExpr("lower(coalesce(if(file_ailas_nm = '' , null, file_ailas_nm),file_nm)) as file_name", "init_sql", "source_system_cd")
+  .map(
+    x =>
+      Array(x.getAs("file_name").toString, x.getAs("init_sql").toString, x.getAs("source_system_cd").toString.toLowerCase)
+  ).collect()
+    //    logWarning(tuplesJobList.mkString(","))
+
+
+    for (x <- tuplesJobArr.indices) {
+      //      logWarning(elem.toString())
 
       /*   拼接ods文件名
           * @desc
           * @author   Yav
           * @date 9/20/22 4:31 PM
       */
-      val odsFileName: String = "ods." + elem._3 + "_" + elem._1
+      logWarning(tuplesJobArr(x)(0))
+      val odsFileName: String = "ods." + tuplesJobArr(x)(2) + "_" + tuplesJobArr(x)(0)
 
 
       /*
@@ -101,21 +107,25 @@ object initialPgDataToHive extends Serializable with Logging {
       */
       val fieldList = new ListBuffer[String]
       val value: String = spark.sql(s"show create table $odsFileName").head()(0).toString
-//      val value: String = spark.sql(s"show create table ods.test").head()(0).toString
+      //      val value: String = spark.sql(s"show create table ods.test").head()(0).toString
       val i: Int = value.indexOf("PARTITIONED BY ")
-      val str: String = value.substring(i+13,value.length)
-      val s: Int = str.indexOf("(")
-      val e: Int = str.indexOf(")")
-      val parKey: String = str.substring(s+1, e)
+      var parKey =""
+      if (i > 0 ){
+        val str: String = value.substring(i + 13, value.length)
+        val s: Int = str.indexOf("(")
+        val e: Int = str.indexOf(")")
+         parKey = "partition("+str.substring(s + 1, e)+")"
+      }
 
 
 
-//      val parArr: Array[String] = spark.sql(s"show partitions $odsFileName")
-//        .head(1)(0).get(0).toString.split("/")
-//      for (elem <- parArr) {
-//        fieldList.append(elem.split("=")(0))
-//      }
-//      val parKey: String = fieldList.mkString(",")
+
+      //      val parArr: Array[String] = spark.sql(s"show partitions $odsFileName")
+      //        .head(1)(0).get(0).toString.split("/")
+      //      for (elem <- parArr) {
+      //        fieldList.append(elem.split("=")(0))
+      //      }
+      //      val parKey: String = fieldList.mkString(",")
 
       /*
                 * @desc   拼接嵌套SQL 使PG到顺序一致
@@ -126,9 +136,11 @@ object initialPgDataToHive extends Serializable with Logging {
       val cols: Array[String] = spark.sql(s"select * from $odsFileName where 1=0").dtypes.map(x => {
         "cast(" + x._1 + " as " + x._2.replace("Type", "") + ") as " + x._1
       })
+
       spark.read.format("jdbc")
         .options(connMap)
-        .option("query", elem._2.replaceAll(";", ""))
+        .option("fetchsize",5000)
+        .option("query", tuplesJobArr(x)(1).toString.replaceAll(";", ""))
         .load()
         .selectExpr(cols: _*)
         .createOrReplaceTempView("loadToOdsTable")
@@ -139,12 +151,10 @@ object initialPgDataToHive extends Serializable with Logging {
           * @date 9/21/22 11:25 AM
       */
 
-      spark.sql(s"insert overwrite table $odsFileName  partition($parKey) select * from loadToOdsTable")
+      spark.sql(s"insert overwrite table $odsFileName  $parKey select * from loadToOdsTable")
     }
 
     closeSparkSession(spark)
-
-
 
 
   }

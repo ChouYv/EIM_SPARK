@@ -63,7 +63,7 @@ object loadApp {
           * @author   Yav
           * @date 9/11/22 3:18 PM
       */
-      loadKey
+//      loadKey
 //      if ("Y" == ifPhysicalDeletion) {
 //        val joinCondition: String = pkList.map(x => {
 //          s"(s.$x = sp.$x)"
