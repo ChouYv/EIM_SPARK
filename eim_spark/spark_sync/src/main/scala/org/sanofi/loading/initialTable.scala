@@ -22,9 +22,9 @@ object initialTable extends Logging with Serializable {
   var ldgPkTableName: String = _
   var stgPkTableName: String = _
   var rejPkTableName: String = _
-  var ifPhysicalDeletion:String= _
+  var ifPhysicalDeletion: String = _
   var pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
-  var loadKey:String =_
+  var loadKey: String = ""
   var partKey: String = _
 
   def initialPgTable(inputSpark: SparkSession, env: String) = {
@@ -73,8 +73,8 @@ object initialTable extends Logging with Serializable {
 
 
   def getDDLSql(inputFileName: String, spark: SparkSession, createFlag: Boolean, writeSQL: Boolean) = {
-        pkList.clear()
-//    val pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
+    pkList.clear()
+    //    val pkList: mutable.ListBuffer[String] = mutable.ListBuffer()
     val sql1: String =
       """
         |   select
@@ -107,16 +107,19 @@ object initialTable extends Logging with Serializable {
     val pgFileId = df1Row.getAs("bif_id").toString
     val loadSolution = df1Row.getAs("load_solution").toString
     val fullDelta = df1Row.getAs("full_delta").toString
-     ifPhysicalDeletion = df1Row.getAs("if_physical_deletion").toString
-     loadKey = df1Row.getAs("load_key").toString
+    ifPhysicalDeletion = df1Row.getAs("if_physical_deletion").toString
+    if (null != df1Row.getAs("load_key")) {
+      loadKey = df1Row.getAs("load_key").toString
+    }
+
     val fileType = df1Row.getAs("file_type").toString
     val ddlName = df1Row.getAs("ddl_name").toString
 
-    var fileDelimiter =""
-    var fileQuote ="\""
+    var fileDelimiter = ""
+    var fileQuote = "\""
 
-    var tabCommentCn=""
-    if (null!=df1Row.getAs("tab_comment_cn")) {
+    var tabCommentCn = ""
+    if (null != df1Row.getAs("tab_comment_cn")) {
       tabCommentCn = df1Row.getAs("tab_comment_cn").toString
     }
 
@@ -124,17 +127,16 @@ object initialTable extends Logging with Serializable {
     if (null == df1Row.getAs("delimiter")) {
       throw new Exception(s"delimiter字段为空")
     } else {
-       fileDelimiter = df1Row.getAs("delimiter").toString
+      fileDelimiter = df1Row.getAs("delimiter").toString
     }
 
-    if (null == df1Row.getAs("quote") || "" ==df1Row.getAs("quote")) {
-//      throw new Exception(s"quote字段为空")
+    if (null == df1Row.getAs("quote") || "" == df1Row.getAs("quote")) {
+      //      throw new Exception(s"quote字段为空")
       println("quote字段为空,以默认值====》\"运行")
     } else {
-       fileQuote = df1Row.getAs("quote").toString
+      fileQuote = df1Row.getAs("quote").toString
     }
-    if (fileQuote=="\"") fileQuote="\\\""
-
+    if (fileQuote == "\"") fileQuote = "\\\""
 
 
     val loadKeyList: Array[String] = loadKey.toLowerCase.split(",")
@@ -197,10 +199,10 @@ object initialTable extends Logging with Serializable {
       .mkString(",\n")
 
     val ldgDDLSuf: String = {
-      if ("CSV" == fileType) {
+      if (Array("CSV", "EXCEL", "Table").contains(fileType)) {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
           s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
-          s"with serdeproperties('separatorChar' = '$fileDelimiter','quoteChar'     = '$fileQuote')"+
+          s"with serdeproperties('separatorChar' = '$fileDelimiter','quoteChar'     = '$fileQuote')" +
           s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}' \n" +
           s"TBLPROPERTIES ('skip.header.line.count'='1');"
       } else {
@@ -210,7 +212,7 @@ object initialTable extends Logging with Serializable {
     val ldgDDLSql = ldgDDLPrd + ldgDDLMid + ldgDDLSuf
     ldgTableName = s"ldg.$ddlName"
 
-    /*   
+    /*
         * @desc   ldg-pk
         * @author   Yav
         * @date 9/11/22 9:34 PM
@@ -221,8 +223,8 @@ object initialTable extends Logging with Serializable {
       if ("CSV" == fileType) {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
           s"ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' \n" +
-          s"with serdeproperties('separatorChar' = '$fileDelimiter','quoteChar' = '$fileQuote')"+
-        s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}_pk' \n" +
+          s"with serdeproperties('separatorChar' = '$fileDelimiter','quoteChar' = '$fileQuote')" +
+          s"LOCATION 'cosn://${cosPath}/${sourceSystem}/${ddlName}_pk' \n" +
           s"TBLPROPERTIES ('skip.header.line.count'='1');"
       } else {
         s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string); \n"
@@ -241,7 +243,7 @@ object initialTable extends Logging with Serializable {
 
     val stgDDLPrd: String = s"drop table if exists stg.${ddlName};\nCREATE TABLE IF NOT EXISTS stg.${ddlName} (\n"
     val stgDDLMid: String = midDF.map(
-      line => "\t`" + line.getAs("field_name").toString + "` string comment '" + line.getAs("field_comment").toString.replaceAll("'","") + "'"
+      line => "\t`" + line.getAs("field_name").toString + "` string comment '" + line.getAs("field_comment").toString.replaceAll("'", "") + "'"
     ).collect()
       .mkString(",\n")
     val stgDDLSuf: String = s") \nCOMMENT '${tabCommentCn}' \nPARTITIONED BY (`eim_dt` string) \n" +
@@ -289,7 +291,7 @@ object initialTable extends Logging with Serializable {
     val rejPkDDLSuf: String = stgDDLSuf
 
     val rejPkDDLSql = rejPkDDLPrd + rejPkDDLMid + rejPkDDLSuf
-    rejPkTableName=s"rej.ldg_${ddlName}_pk"
+    rejPkTableName = s"rej.ldg_${ddlName}_pk"
 
     /*
         * @desc   ods
@@ -298,12 +300,20 @@ object initialTable extends Logging with Serializable {
     */
 
 
-    if ("full delete full load by key" == loadSolution) {
+//    if ("full delete full load by key" == loadSolution ) {
+//      partKey = "loadKey"
+//    } else if ("Full" == fullDelta && "full delete full load by key" != loadSolution) {
+//      partKey = ""
+//    } else if ("Delta" == fullDelta && "full delete full load by key" != loadSolution) {
+//      partKey = "eim_dt"
+//    }
+
+    if ("full delete full load by key" == loadSolution && "Full_Bykey" == fullDelta) {
       partKey = "loadKey"
-    } else if ("Full" == fullDelta & "full delete full load by key" != loadSolution) {
-      partKey = ""
-    } else if ("Delta" == fullDelta & "full delete full load by key" != loadSolution) {
+    } else if ("Delta" == fullDelta && "full delete full load by key" != loadSolution) {
       partKey = "eim_dt"
+    } else {
+      partKey = ""
     }
 
     val odsDDLPrd: String = s"drop table if exists ods.${ddlName};\nCREATE TABLE IF NOT EXISTS ods.${ddlName} (\n"
@@ -334,7 +344,7 @@ object initialTable extends Logging with Serializable {
             case "bool" => "boolean"
             case _ => "string"
           }
-          ) + " comment '" + line.getAs("field_comment").toString.replaceAll("'","") + "'"
+          ) + " comment '" + line.getAs("field_comment").toString.replaceAll("'", "") + "'"
       }
     ).collect()
       .mkString(",\n")
